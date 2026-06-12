@@ -16,6 +16,8 @@ commands:
       /alib setbase <ns:id> <value>
       /alib add <ns:id> <ADD|MULTIPLY|SET> <value> [durationTicks]
       /alib clear - デバッグ由来モディファイアの除去
+      /alib item [<ns:id> <ADD|MULTIPLY|SET> <value> [slot]] - 手持ちアイテムの属性表示/追加
+      /alib itemclear - 手持ちアイテムのカスタム属性を全除去
       /alib smoke - 自己診断(コンソール可)
 
 permissions:

@@ -3,15 +3,24 @@ package DIV.attributelib.command;
 import DIV.attributelib.api.AttributeType;
 import DIV.attributelib.api.DamageElements;
 import DIV.attributelib.api.DamageLib;
+import DIV.attributelib.api.ItemAttributes;
+import DIV.attributelib.api.ItemModifier;
 import DIV.attributelib.api.ModifierHandle;
 import DIV.attributelib.api.Operation;
 import DIV.attributelib.api.StandardAttributes;
 import DIV.attributelib.core.AttributeEngine;
 import DIV.attributelib.core.Modifier;
 import DIV.attributelib.damage.DamageTypes;
+import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.event.entity.EntityEquipmentChangedEvent;
+import org.bukkit.Material;
 import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -70,6 +79,8 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             case "setbase" -> setBase(sender, args);
             case "add" -> add(sender, args);
             case "clear" -> clear(sender);
+            case "item" -> item(sender, args);
+            case "itemclear" -> itemClear(sender);
             case "smoke" -> smoke(sender);
             default -> {
                 return false;
@@ -236,7 +247,57 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        // 2tick 後: 時限モディファイアが gameTime 進行で自動失効していること
+        // 装備同期の検証。装備変更の「検出」は entity tick 駆動でプレイヤー不在だと
+        // 走らないため(実測 ticksLived=0)、ここでは合成イベントをバスに流して
+        // リスナーの配線と同期ロジックを検証する(バニラ側の発火はゲーム内で確認可能)
+        Zombie equipZombie = world.spawn(world.getSpawnLocation(), Zombie.class, z -> {
+            z.setAI(false);
+            z.setSilent(true);
+            z.setPersistent(false);
+        });
+        try {
+            ItemStack sword = ItemStack.of(Material.DIAMOND_SWORD);
+            ItemAttributes.add(sword, smokeType(), Operation.ADD, 50, EquipmentSlotGroup.MAINHAND);
+            ItemAttributes.add(sword, smokeType(), Operation.ADD, 999, EquipmentSlotGroup.HEAD);
+
+            equipZombie.getEquipment().setItemInMainHand(sword);
+            callEquipChanged(equipZombie, EquipmentSlot.HAND, ItemStack.empty(), sword);
+            check(failures, "装備同期: MAINHAND +50(HEAD 分は除外)",
+                    engine.get(equipZombie, smokeType()), SMOKE_DEFAULT + 50);
+
+            equipZombie.getEquipment().setItemInMainHand(null);
+            callEquipChanged(equipZombie, EquipmentSlot.HAND, sword, ItemStack.empty());
+            check(failures, "装備解除で消える(ゴースト強化なし)",
+                    engine.get(equipZombie, smokeType()), SMOKE_DEFAULT);
+
+            // バニラ属性のコンポーネント書き込みで基礎ステが消えないこと(base-wipe 検証、企画書 §8)
+            ItemStack vanillaSword = ItemStack.of(Material.DIAMOND_SWORD);
+            ItemAttributes.setVanilla(vanillaSword, Attribute.ATTACK_DAMAGE,
+                    new NamespacedKey("attributelib", "smoke_vanilla"),
+                    AttributeModifier.Operation.ADD_NUMBER, 3, EquipmentSlotGroup.MAINHAND);
+            var component = vanillaSword.getData(DataComponentTypes.ATTRIBUTE_MODIFIERS);
+            boolean hasBase = false;
+            boolean hasOurs = false;
+            if (component != null) {
+                for (var entry : component.modifiers()) {
+                    String key = entry.modifier().getKey().toString();
+                    hasBase |= key.equals("minecraft:base_attack_damage");
+                    hasOurs |= key.equals("attributelib:smoke_vanilla");
+                }
+            }
+            if (!hasBase) {
+                failures.add("バニラ属性付与で基礎攻撃力が消えた(base-wipe)");
+            }
+            if (!hasOurs) {
+                failures.add("バニラ属性モディファイアが付与されていない");
+            }
+        } catch (Exception e) {
+            failures.add("例外発生(装備検証): " + e);
+        } finally {
+            equipZombie.remove();
+        }
+
+        // フェーズ2(2tick 後): 時限モディファイアが gameTime 進行で自動失効していること
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             try {
                 AttributeType type = smokeType();
@@ -246,12 +307,101 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
                 engine.resetBase(stand, type);
                 check(failures, "resetBase で default に復帰", engine.get(stand, type), SMOKE_DEFAULT);
             } catch (Exception e) {
-                failures.add("例外発生(遅延フェーズ): " + e);
+                failures.add("例外発生(フェーズ2): " + e);
             } finally {
                 stand.remove();
             }
             report(sender, failures);
         }, 2L);
+    }
+
+    /** 合成の装備変更イベントをバスに流す(smoke 用。プレイヤー不在では tick 検出が走らないため)。 */
+    private void callEquipChanged(LivingEntity entity, EquipmentSlot slot, ItemStack oldItem, ItemStack newItem) {
+        EntityEquipmentChangedEvent.EquipmentChange change = new EntityEquipmentChangedEvent.EquipmentChange() {
+            @Override
+            public ItemStack oldItem() {
+                return oldItem;
+            }
+
+            @Override
+            public ItemStack newItem() {
+                return newItem;
+            }
+        };
+        Bukkit.getPluginManager().callEvent(new EntityEquipmentChangedEvent(entity, Map.of(slot, change)));
+    }
+
+    /**
+     * 手持ちアイテムのカスタム属性を表示/追加する。
+     * {@code /alib item} で表示、{@code /alib item <ns:id> <op> <value> [slotGroup]} で追加。
+     */
+    private void item(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("このコマンドはプレイヤー専用です");
+            return;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (held.isEmpty()) {
+            sender.sendMessage("メインハンドにアイテムを持ってください");
+            return;
+        }
+        if (args.length == 1) {
+            List<ItemModifier> modifiers = ItemAttributes.get(held);
+            if (modifiers.isEmpty()) {
+                sender.sendMessage("このアイテムにカスタム属性はありません");
+                return;
+            }
+            sender.sendMessage(held.getType() + " のカスタム属性 (" + modifiers.size() + "件):");
+            for (ItemModifier m : modifiers) {
+                sender.sendMessage("  - " + m.attribute() + " " + m.operation() + " " + m.value()
+                        + " [" + m.slot() + "]");
+            }
+            return;
+        }
+        if (args.length != 4 && args.length != 5) {
+            sender.sendMessage("使い方: /alib item [<ns:id> <ADD|MULTIPLY|SET> <value> [slotGroup]]");
+            return;
+        }
+        AttributeType type = parseType(sender, args[1]);
+        Operation operation;
+        try {
+            operation = Operation.valueOf(args[2].toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage("演算は ADD / MULTIPLY / SET のいずれかです: " + args[2]);
+            return;
+        }
+        Double value = parseDouble(sender, args[3]);
+        EquipmentSlotGroup slot = EquipmentSlotGroup.MAINHAND;
+        if (args.length == 5) {
+            slot = EquipmentSlotGroup.getByName(args[4].toLowerCase(Locale.ROOT));
+            if (slot == null) {
+                sender.sendMessage("不明なスロットグループです: " + args[4]
+                        + " (mainhand/offhand/hand/head/chest/legs/feet/armor/body/any)");
+                return;
+            }
+        }
+        if (type == null || value == null) {
+            return;
+        }
+        ItemAttributes.add(held, type, operation, value, slot);
+        player.getInventory().setItemInMainHand(held);
+        sender.sendMessage(held.getType() + " に " + type.key() + " " + operation + " " + value
+                + " [" + slot + "] を付与しました(持ち替えると反映)");
+    }
+
+    private void itemClear(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("このコマンドはプレイヤー専用です");
+            return;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (held.isEmpty()) {
+            sender.sendMessage("メインハンドにアイテムを持ってください");
+            return;
+        }
+        ItemAttributes.clear(held);
+        player.getInventory().setItemInMainHand(held);
+        sender.sendMessage("カスタム属性を全て除去しました");
     }
 
     /**
@@ -431,16 +581,21 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("list", "dump", "setbase", "add", "clear", "smoke"), args[0]);
+            return filter(List.of("list", "dump", "setbase", "add", "clear", "item", "itemclear", "smoke"), args[0]);
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("setbase") || args[0].equalsIgnoreCase("add"))) {
+        if (args.length == 5 && args[0].equalsIgnoreCase("item")) {
+            return filter(List.of("mainhand", "offhand", "hand", "head", "chest", "legs", "feet",
+                    "armor", "body", "any"), args[4]);
+        }
+        if (args.length == 2 && (args[0].equalsIgnoreCase("setbase") || args[0].equalsIgnoreCase("add")
+                || args[0].equalsIgnoreCase("item"))) {
             List<String> keys = new ArrayList<>();
             for (AttributeType type : engine.registered()) {
                 keys.add(type.key().toString());
             }
             return filter(keys, args[1]);
         }
-        if (args.length == 3 && args[0].equalsIgnoreCase("add")) {
+        if (args.length == 3 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("item"))) {
             return filter(List.of("ADD", "MULTIPLY", "SET"), args[2]);
         }
         return List.of();
