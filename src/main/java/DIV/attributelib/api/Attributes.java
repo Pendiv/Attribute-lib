@@ -133,6 +133,37 @@ public final class Attributes {
         return engine().add(entity, type, sourceId, operation, value, durationTicks, false);
     }
 
+    // ---- 条件付き(成立している間だけ効く) ----
+
+    /** 条件付きの無期限永続モディファイア。例: 夜間のみ攻撃力+3。 */
+    public static ModifierHandle add(LivingEntity entity, AttributeType type,
+                                     String sourceId, Operation operation, double value, Condition condition) {
+        return engine().add(entity, type, sourceId, operation, value, 0, true, condition.key());
+    }
+
+    /** 条件付き+時限の永続モディファイア。 */
+    public static ModifierHandle add(LivingEntity entity, AttributeType type,
+                                     String sourceId, Operation operation, double value,
+                                     long durationTicks, Condition condition) {
+        requirePositiveDuration(durationTicks);
+        return engine().add(entity, type, sourceId, operation, value, durationTicks, true, condition.key());
+    }
+
+    /** 条件付きの一時モディファイア。 */
+    public static ModifierHandle addTransient(LivingEntity entity, AttributeType type,
+                                              String sourceId, Operation operation, double value,
+                                              Condition condition) {
+        return engine().add(entity, type, sourceId, operation, value, 0, false, condition.key());
+    }
+
+    /** 条件付き+時限の一時モディファイア。 */
+    public static ModifierHandle addTransient(LivingEntity entity, AttributeType type,
+                                              String sourceId, Operation operation, double value,
+                                              long durationTicks, Condition condition) {
+        requirePositiveDuration(durationTicks);
+        return engine().add(entity, type, sourceId, operation, value, durationTicks, false, condition.key());
+    }
+
     /** 指定 sourceId のモディファイアを(全属性から)まとめて取り除く。REPLACE 運用の前半。 */
     public static void removeAll(LivingEntity entity, String sourceId) {
         engine().removeBySource(entity, sourceId);

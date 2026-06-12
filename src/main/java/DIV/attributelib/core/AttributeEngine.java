@@ -42,6 +42,18 @@ public final class AttributeEngine {
     /** 時限ブリッジの失効タスク(エンティティごと最大1個、期限ちょうどに1回だけ実行)。 */
     private final Map<UUID, Arm> arms = new HashMap<>();
 
+    private final ConditionRegistry conditions;
+
+    /**
+     * 条件付きブリッジモディファイアを持つエンティティ。条件の成立/不成立は時間経過で
+     * 変わり、バニラ値は能動的に書き戻す必要があるため、この集合が空でない間だけ
+     * 周期タスク({@link #CONDITION_REFRESH_PERIOD} tick)で再評価する。
+     * 空になればタスクは自動停止する。
+     */
+    private final Map<UUID, EntityAttributes> conditionalBridgeEntities = new HashMap<>();
+    private BukkitTask conditionRefreshTask;
+    private static final long CONDITION_REFRESH_PERIOD = 20L;
+
     private record Arm(long deadline, BukkitTask task) {
     }
 
@@ -49,6 +61,12 @@ public final class AttributeEngine {
         this.plugin = plugin;
         this.baseKey = new NamespacedKey(plugin, "base");
         this.modifiersKey = new NamespacedKey(plugin, "modifiers");
+        this.conditions = new ConditionRegistry(plugin.getLogger());
+    }
+
+    /** 条件レジストリ(ファサード Conditions の実体)。 */
+    public ConditionRegistry conditions() {
+        return conditions;
     }
 
     /** メインスレッド以外からの呼び出しを即座に拒否する。中途半端な同期はしない方針。 */
@@ -148,11 +166,55 @@ public final class AttributeEngine {
         }
         Double target = state.computeBridged(registry.get(key), instance.getBaseValue());
         double delta = target == null ? 0 : target - instance.getBaseValue();
+
+        // 現在書き込まれている値と同じなら何もしない(周期再評価の無駄な書き換えを防ぐ)
+        AttributeModifier current = null;
+        for (AttributeModifier modifier : instance.getModifiers()) {
+            if (modifier.getKey().equals(BRIDGE_KEY)) {
+                current = modifier;
+                break;
+            }
+        }
         if (delta == 0) {
-            VanillaAttributes.remove(entity, attribute, BRIDGE_KEY);
-        } else {
-            VanillaAttributes.setTransient(entity, attribute, BRIDGE_KEY,
-                    AttributeModifier.Operation.ADD_NUMBER, delta);
+            if (current != null) {
+                instance.removeModifier(current);
+            }
+        } else if (current == null || current.getAmount() != delta) {
+            if (current != null) {
+                instance.removeModifier(current);
+            }
+            instance.addTransientModifier(new AttributeModifier(BRIDGE_KEY, delta,
+                    AttributeModifier.Operation.ADD_NUMBER));
+        }
+    }
+
+    private void trackConditionalBridge(EntityAttributes state) {
+        conditionalBridgeEntities.put(state.entity().getUniqueId(), state);
+        if (conditionRefreshTask == null) {
+            conditionRefreshTask = Bukkit.getScheduler().runTaskTimer(plugin,
+                    this::refreshConditionalBridges, CONDITION_REFRESH_PERIOD, CONDITION_REFRESH_PERIOD);
+        }
+    }
+
+    /**
+     * 条件付きブリッジの再評価(周期タスク本体。テストから直接呼んでもよい)。
+     * 対象が空になったらタスクごと止まる。
+     */
+    public void refreshConditionalBridges() {
+        if (conditionalBridgeEntities.isEmpty()) {
+            if (conditionRefreshTask != null) {
+                conditionRefreshTask.cancel();
+                conditionRefreshTask = null;
+            }
+            return;
+        }
+        for (EntityAttributes state : List.copyOf(conditionalBridgeEntities.values())) {
+            for (NamespacedKey key : state.attributeKeysWithData()) {
+                Attribute attribute = bridged.get(key);
+                if (attribute != null && state.hasConditional(key)) {
+                    pushBridge(state, key, attribute);
+                }
+            }
         }
     }
 
@@ -216,6 +278,11 @@ public final class AttributeEngine {
         }
         arms.values().forEach(arm -> arm.task().cancel());
         arms.clear();
+        conditionalBridgeEntities.clear();
+        if (conditionRefreshTask != null) {
+            conditionRefreshTask.cancel();
+            conditionRefreshTask = null;
+        }
         entities.clear();
     }
 
@@ -272,13 +339,25 @@ public final class AttributeEngine {
      */
     public ModifierHandle add(LivingEntity entity, AttributeType type, String sourceId,
                               Operation operation, double value, long durationTicks, boolean persistent) {
+        return add(entity, type, sourceId, operation, value, durationTicks, persistent, null);
+    }
+
+    public ModifierHandle add(LivingEntity entity, AttributeType type, String sourceId,
+                              Operation operation, double value, long durationTicks, boolean persistent,
+                              NamespacedKey condition) {
         EntityAttributes state = of(entity);
         long expiresAt = durationTicks <= 0
                 ? Modifier.PERMANENT
                 : entity.getWorld().getGameTime() + durationTicks;
-        ModifierHandle handle = state.add(new Modifier(type.key(), sourceId, operation, value, expiresAt, persistent));
-        if (expiresAt != Modifier.PERMANENT && isBridged(type.key())) {
-            armIfNeeded(state); // 時限ブリッジは失効時刻に能動的に書き戻す必要がある
+        ModifierHandle handle = state.add(
+                new Modifier(type.key(), sourceId, operation, value, expiresAt, persistent, condition));
+        if (isBridged(type.key())) {
+            if (expiresAt != Modifier.PERMANENT) {
+                armIfNeeded(state); // 時限ブリッジは失効時刻に能動的に書き戻す必要がある
+            }
+            if (condition != null) {
+                trackConditionalBridge(state); // 条件付きブリッジは周期再評価の対象
+            }
         }
         return handle;
     }
@@ -328,6 +407,10 @@ public final class AttributeEngine {
                 if (needsPush) {
                     pushBridge(state, entry.getKey(), entry.getValue());
                 }
+                // 永続データに条件付きブリッジがあれば周期再評価の対象に戻す
+                if (dataKeys.contains(entry.getKey()) && state.hasConditional(entry.getKey())) {
+                    trackConditionalBridge(state);
+                }
             }
             armIfNeeded(state);
         }
@@ -341,6 +424,7 @@ public final class AttributeEngine {
 
     public void evict(UUID entityId) {
         entities.remove(entityId);
+        conditionalBridgeEntities.remove(entityId);
         cancelArm(entityId);
     }
 

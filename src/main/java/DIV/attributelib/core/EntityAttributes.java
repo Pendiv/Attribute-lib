@@ -51,6 +51,13 @@ final class EntityAttributes {
      */
     private long nearestExpiry = Long.MAX_VALUE;
 
+    /**
+     * 条件付きモディファイアを持つ属性。条件は時間経過で勝手に成立/不成立が変わるため
+     * 最終値をキャッシュできず、毎回読み取り時に評価する(イベント駆動のみなので軽い)。
+     * 集合は追加のみ(除去で条件が無くなっても縮めない。キャッシュをやめる側に倒すだけで無害)。
+     */
+    private final java.util.Set<NamespacedKey> conditionalAttrs = new java.util.HashSet<>();
+
     EntityAttributes(AttributeEngine engine, LivingEntity entity,
                      NamespacedKey baseKey, NamespacedKey modifiersKey, Logger logger) {
         this.engine = engine;
@@ -70,13 +77,18 @@ final class EntityAttributes {
 
     double get(AttributeType type) {
         sweepExpired();
-        Double cached = finalCache.get(type.key());
-        if (cached != null) {
-            return cached;
+        boolean cacheable = !conditionalAttrs.contains(type.key());
+        if (cacheable) {
+            Double cached = finalCache.get(type.key());
+            if (cached != null) {
+                return cached;
+            }
         }
         double baseValue = base.getOrDefault(type.key(), type.defaultValue());
-        double result = Calculator.compute(type, baseValue, modifiersFor(type.key()));
-        finalCache.put(type.key(), result);
+        double result = Calculator.compute(type, baseValue, activeModifiersFor(type.key()));
+        if (cacheable) {
+            finalCache.put(type.key(), result);
+        }
         return result;
     }
 
@@ -125,6 +137,9 @@ final class EntityAttributes {
         finalCache.remove(modifier.attribute());
         if (modifier.expiresAt() != Modifier.PERMANENT) {
             nearestExpiry = Math.min(nearestExpiry, modifier.expiresAt());
+        }
+        if (modifier.condition() != null) {
+            conditionalAttrs.add(modifier.attribute());
         }
         if (modifier.persistent()) {
             saveModifiers();
@@ -193,12 +208,18 @@ final class EntityAttributes {
      */
     Double computeBridged(AttributeType type, double vanillaBase) {
         sweepExpired();
-        List<Modifier> applicable = modifiersFor(type.key());
-        if (applicable.isEmpty() && !base.containsKey(type.key())) {
+        // データ有無の判定は条件の成否を問わない(不成立でもデータは存在する)。
+        // 計算には成立中のものだけを使う → 全部不成立なら target = vanillaBase = delta 0
+        if (modifiersFor(type.key()).isEmpty() && !base.containsKey(type.key())) {
             return null;
         }
         double baseValue = base.getOrDefault(type.key(), vanillaBase);
-        return Calculator.compute(type, baseValue, applicable);
+        return Calculator.compute(type, baseValue, activeModifiersFor(type.key()));
+    }
+
+    /** この属性に条件付きモディファイアがあるか(ブリッジの周期更新の対象判定)。 */
+    boolean hasConditional(NamespacedKey attribute) {
+        return conditionalAttrs.contains(attribute);
     }
 
     private void sweepExpired() {
@@ -239,6 +260,18 @@ final class EntityAttributes {
         List<Modifier> result = new ArrayList<>();
         for (Modifier m : modifiers) {
             if (m.attribute().equals(attribute)) {
+                result.add(m);
+            }
+        }
+        return result;
+    }
+
+    /** この属性のモディファイアのうち、条件が成立しているものだけ(無条件は常に成立)。 */
+    private List<Modifier> activeModifiersFor(NamespacedKey attribute) {
+        List<Modifier> result = new ArrayList<>();
+        for (Modifier m : modifiers) {
+            if (m.attribute().equals(attribute)
+                    && engine.conditions().isActive(m.condition(), entity)) {
                 result.add(m);
             }
         }
@@ -301,6 +334,9 @@ final class EntityAttributes {
                 }
                 if (m.expiresAt() != Modifier.PERMANENT) {
                     nearestExpiry = Math.min(nearestExpiry, m.expiresAt());
+                }
+                if (m.condition() != null) {
+                    conditionalAttrs.add(m.attribute());
                 }
                 modifiers.add(m);
             }

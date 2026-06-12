@@ -16,6 +16,8 @@ import org.bukkit.NamespacedKey;
  *                   {@code Bukkit.getCurrentTick()} は使わないこと。
  * @param persistent true なら PDC に保存され再起動・再ロードを跨いで生存する。
  *                   false(transient)はメモリのみで、チャンクアンロードで消える。
+ * @param condition  適用条件のキー(null = 無条件)。成立している間だけ計算に乗る。
+ *                   述語はレジストリから評価時に引き直される。
  */
 public record Modifier(
         NamespacedKey attribute,
@@ -23,10 +25,17 @@ public record Modifier(
         Operation operation,
         double value,
         long expiresAt,
-        boolean persistent
+        boolean persistent,
+        NamespacedKey condition
 ) {
     /** {@link #expiresAt} に入れると無期限になる値。 */
     public static final long PERMANENT = -1L;
+
+    /** 無条件モディファイア。 */
+    public Modifier(NamespacedKey attribute, String sourceId, Operation operation,
+                    double value, long expiresAt, boolean persistent) {
+        this(attribute, sourceId, operation, value, expiresAt, persistent, null);
+    }
 
     public Modifier {
         if (sourceId == null || sourceId.isEmpty()) {

@@ -1,6 +1,8 @@
 package DIV.attributelib.command;
 
 import DIV.attributelib.api.AttributeType;
+import DIV.attributelib.api.Condition;
+import DIV.attributelib.api.Conditions;
 import DIV.attributelib.api.DamageElements;
 import DIV.attributelib.api.DamageLib;
 import DIV.attributelib.api.ItemAttributes;
@@ -23,6 +25,8 @@ import org.bukkit.damage.DamageType;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
@@ -81,6 +85,7 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             case "setbase" -> setBase(sender, args);
             case "add" -> add(sender, args);
             case "clear" -> clear(sender);
+            case "conditions" -> conditions(sender);
             case "item" -> item(sender, args);
             case "itemclear" -> itemClear(sender);
             case "smoke" -> smoke(sender);
@@ -157,8 +162,8 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
     }
 
     private void add(CommandSender sender, String[] args) {
-        if (args.length != 4 && args.length != 5) {
-            sender.sendMessage("使い方: /alib add <ns:id> <ADD|MULTIPLY|SET> <value> [durationTicks]");
+        if (args.length < 4 || args.length > 6) {
+            sender.sendMessage("使い方: /alib add <ns:id> <ADD|MULTIPLY|SET> <value> [durationTicks] [条件]");
             return;
         }
         AttributeType type = parseType(sender, args[1]);
@@ -171,15 +176,22 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
         }
         Double value = parseDouble(sender, args[3]);
         long duration = 0;
-        if (args.length == 5) {
+        if (args.length >= 5) {
             try {
                 duration = Long.parseLong(args[4]);
             } catch (NumberFormatException e) {
-                sender.sendMessage("durationTicks が数値ではありません: " + args[4]);
+                sender.sendMessage("durationTicks が数値ではありません(無期限は 0): " + args[4]);
                 return;
             }
-            if (duration <= 0) {
-                sender.sendMessage("durationTicks は正の値が必要です: " + duration);
+            if (duration < 0) {
+                sender.sendMessage("durationTicks は 0 以上が必要です: " + duration);
+                return;
+            }
+        }
+        Condition condition = null;
+        if (args.length == 6) {
+            condition = parseCondition(sender, args[5]);
+            if (condition == null) {
                 return;
             }
         }
@@ -187,9 +199,29 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
         if (type == null || value == null || target == null) {
             return;
         }
-        engine.add(target, type, DEBUG_SOURCE, operation, value, duration, true);
+        engine.add(target, type, DEBUG_SOURCE, operation, value, duration, true,
+                condition != null ? condition.key() : null);
         sender.sendMessage(type.key() + " に " + operation + " " + value
-                + (duration > 0 ? " (" + duration + "tick)" : "") + " を付与 → 最終値 " + engine.get(target, type));
+                + (duration > 0 ? " (" + duration + "tick)" : "")
+                + (condition != null ? " [条件: " + condition.key() + "]" : "")
+                + " を付与 → 最終値 " + engine.get(target, type));
+    }
+
+    private void conditions(CommandSender sender) {
+        var registered = engine.conditions().registered();
+        sender.sendMessage("登録済み条件 (" + registered.size() + "件):");
+        for (Condition condition : registered) {
+            sender.sendMessage("  " + condition.key());
+        }
+    }
+
+    private Condition parseCondition(CommandSender sender, String arg) {
+        NamespacedKey key = NamespacedKey.fromString(arg);
+        Condition condition = key != null ? engine.conditions().byKey(key) : null;
+        if (condition == null) {
+            sender.sendMessage("未登録の条件です: " + arg + " (/alib conditions で確認)");
+        }
+        return condition;
     }
 
     private void clear(CommandSender sender) {
@@ -243,6 +275,17 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
 
             engine.removeBySource(stand, SMOKE_SOURCE);
             check(failures, "removeAll(REPLACE 運用)", engine.get(stand, type), 10);
+
+            // 条件付き(カスタム属性): 読み取りの瞬間に評価される
+            smokeToggle = false;
+            Condition toggle = smokeToggleCondition();
+            ModifierHandle conditional = engine.add(stand, type, SMOKE_SOURCE,
+                    Operation.ADD, 7, 0, true, toggle.key());
+            check(failures, "条件不成立中は乗らない", engine.get(stand, type), 10);
+            smokeToggle = true;
+            check(failures, "条件成立で即時反映(読み取り時評価)", engine.get(stand, type), 17);
+            smokeToggle = false;
+            conditional.remove();
 
             engine.add(stand, type, SMOKE_SOURCE, Operation.ADD, 100, 1, true);
             check(failures, "時限 ADD +100 (1tick)", engine.get(stand, type), 110);
@@ -341,6 +384,37 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             double baseArmor = bridgeZombie.getAttribute(Attribute.ARMOR).getValue();
             engine.add(bridgeZombie, Vanilla.ARMOR, SMOKE_SOURCE, Operation.ADD, 5, 1, true);
             check(failures, "ブリッジ: 時限 armor +5", bridgeZombie.getAttribute(Attribute.ARMOR).getValue(), baseArmor + 5);
+
+            // 条件付きブリッジ: 条件反転は周期タスクが反映する(ここでは直接呼んで決定論的に検証)
+            smokeToggle = true;
+            engine.add(bridgeZombie, Vanilla.SCALE, SMOKE_SOURCE, Operation.ADD, 1, 0, true,
+                    smokeToggleCondition().key());
+            check(failures, "条件付きブリッジ: 成立中は反映",
+                    bridgeZombie.getAttribute(Attribute.SCALE).getValue(), 2);
+            smokeToggle = false;
+            engine.refreshConditionalBridges();
+            check(failures, "条件付きブリッジ: 不成立で書き戻し",
+                    bridgeZombie.getAttribute(Attribute.SCALE).getValue(), 1);
+
+            // エフェクト条件: 保持しているエフェクトだけ成立する
+            bridgeZombie.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 200, 0));
+            if (!engine.conditions().isActive(Conditions.hasEffect(PotionEffectType.SPEED).key(), bridgeZombie)) {
+                failures.add("エフェクト条件: SPEED 保持中なのに不成立");
+            }
+            if (engine.conditions().isActive(Conditions.hasEffect(PotionEffectType.POISON).key(), bridgeZombie)) {
+                failures.add("エフェクト条件: 未保持の POISON が成立");
+            }
+
+            // AND 合成: 全成立のときだけ成立する
+            Condition and = smokeAndCondition();
+            smokeToggle = true;
+            if (!engine.conditions().isActive(and.key(), bridgeZombie)) {
+                failures.add("AND 合成: 両条件成立なのに不成立");
+            }
+            smokeToggle = false;
+            if (engine.conditions().isActive(and.key(), bridgeZombie)) {
+                failures.add("AND 合成: 片側不成立なのに成立");
+            }
         } catch (Exception e) {
             failures.add("例外発生(ブリッジ検証): " + e);
         }
@@ -584,6 +658,30 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /** smoke 用のトグル条件(決定論的に成立/不成立を切り替えて検証する)。 */
+    private static boolean smokeToggle;
+
+    private Condition smokeToggleCondition() {
+        NamespacedKey key = new NamespacedKey("attributelib", "smoke_toggle");
+        Condition existing = engine.conditions().byKey(key);
+        if (existing != null) {
+            return existing;
+        }
+        return engine.conditions().register(plugin, "smoke_toggle",
+                net.kyori.adventure.text.Component.text("トグル"), entity -> smokeToggle);
+    }
+
+    /** smoke 用 AND 合成条件(トグル × SPEED エフェクト)。二重登録ガード付き。 */
+    private Condition smokeAndCondition() {
+        NamespacedKey key = new NamespacedKey("attributelib", "smoke_and");
+        Condition existing = engine.conditions().byKey(key);
+        if (existing != null) {
+            return existing;
+        }
+        return Conditions.allOf(plugin, "smoke_and",
+                smokeToggleCondition(), Conditions.hasEffect(PotionEffectType.SPEED));
+    }
+
     private AttributeType smokeType() {
         NamespacedKey key = new NamespacedKey(plugin, "smoke_test");
         AttributeType existing = engine.byKey(key);
@@ -648,7 +746,8 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("list", "dump", "setbase", "add", "clear", "item", "itemclear", "smoke"), args[0]);
+            return filter(List.of("list", "dump", "setbase", "add", "clear", "conditions",
+                    "item", "itemclear", "smoke"), args[0]);
         }
         if (args.length == 5 && args[0].equalsIgnoreCase("item")) {
             return filter(List.of("mainhand", "offhand", "hand", "head", "chest", "legs", "feet",
@@ -664,6 +763,13 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && (args[0].equalsIgnoreCase("add") || args[0].equalsIgnoreCase("item"))) {
             return filter(List.of("ADD", "MULTIPLY", "SET"), args[2]);
+        }
+        if (args.length == 6 && args[0].equalsIgnoreCase("add")) {
+            List<String> keys = new ArrayList<>();
+            for (Condition condition : engine.conditions().registered()) {
+                keys.add(condition.key().toString());
+            }
+            return filter(keys, args[5]);
         }
         return List.of();
     }

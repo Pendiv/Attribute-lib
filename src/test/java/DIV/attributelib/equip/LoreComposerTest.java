@@ -32,6 +32,9 @@ class LoreComposerTest {
     private static final Function<NamespacedKey, AttributeType> RESOLVER =
             Map.of(FLAT_KEY, FLAT, PERCENT_KEY, PERCENT)::get;
 
+    private static final Function<NamespacedKey, Component> COND =
+            key -> Component.text("夜間");
+
     private static TranslatableComponent asTranslatable(Component component) {
         return assertInstanceOf(TranslatableComponent.class, component);
     }
@@ -40,7 +43,7 @@ class LoreComposerTest {
     @DisplayName("ヘッダ: 空行 + 灰色の item.modifiers.<group>(バニラの文法)")
     void header() {
         List<Component> lines = LoreComposer.buildSection(
-                List.of(new ItemModifier(FLAT_KEY, Operation.ADD, 5, EquipmentSlotGroup.MAINHAND)), RESOLVER);
+                List.of(new ItemModifier(FLAT_KEY, Operation.ADD, 5, EquipmentSlotGroup.MAINHAND)), RESOLVER, COND);
         assertEquals(3, lines.size());
         assertEquals(Component.empty(), lines.getFirst());
         TranslatableComponent header = asTranslatable(lines.get(1));
@@ -53,7 +56,7 @@ class LoreComposerTest {
     void addLine() {
         List<Component> lines = LoreComposer.buildSection(List.of(
                 new ItemModifier(FLAT_KEY, Operation.ADD, 5, EquipmentSlotGroup.MAINHAND),
-                new ItemModifier(FLAT_KEY, Operation.ADD, -2.5, EquipmentSlotGroup.MAINHAND)), RESOLVER);
+                new ItemModifier(FLAT_KEY, Operation.ADD, -2.5, EquipmentSlotGroup.MAINHAND)), RESOLVER, COND);
         TranslatableComponent plus = asTranslatable(lines.get(2));
         assertEquals("attribute.modifier.plus.0", plus.key());
         assertEquals(NamedTextColor.BLUE, plus.color());
@@ -69,7 +72,7 @@ class LoreComposerTest {
     @DisplayName("percentDisplay 属性の ADD は百分率(plus.1、0.25 → 25)")
     void percentAttributeAdd() {
         List<Component> lines = LoreComposer.buildSection(List.of(
-                new ItemModifier(PERCENT_KEY, Operation.ADD, 0.25, EquipmentSlotGroup.MAINHAND)), RESOLVER);
+                new ItemModifier(PERCENT_KEY, Operation.ADD, 0.25, EquipmentSlotGroup.MAINHAND)), RESOLVER, COND);
         TranslatableComponent line = asTranslatable(lines.get(2));
         assertEquals("attribute.modifier.plus.1", line.key());
         assertEquals("25", ((net.kyori.adventure.text.TextComponent) line.arguments().getFirst().asComponent()).content());
@@ -80,7 +83,7 @@ class LoreComposerTest {
     void multiplyLine() {
         List<Component> lines = LoreComposer.buildSection(List.of(
                 new ItemModifier(FLAT_KEY, Operation.MULTIPLY, 1.2, EquipmentSlotGroup.MAINHAND),
-                new ItemModifier(FLAT_KEY, Operation.MULTIPLY, 0.8, EquipmentSlotGroup.MAINHAND)), RESOLVER);
+                new ItemModifier(FLAT_KEY, Operation.MULTIPLY, 0.8, EquipmentSlotGroup.MAINHAND)), RESOLVER, COND);
         TranslatableComponent up = asTranslatable(lines.get(2));
         assertEquals("attribute.modifier.plus.1", up.key());
         assertEquals(NamedTextColor.BLUE, up.color());
@@ -97,7 +100,7 @@ class LoreComposerTest {
     void setLine() {
         List<Component> lines = LoreComposer.buildSection(List.of(
                 new ItemModifier(FLAT_KEY, Operation.SET, 7, EquipmentSlotGroup.MAINHAND),
-                new ItemModifier(PERCENT_KEY, Operation.SET, 0.5, EquipmentSlotGroup.MAINHAND)), RESOLVER);
+                new ItemModifier(PERCENT_KEY, Operation.SET, 0.5, EquipmentSlotGroup.MAINHAND)), RESOLVER, COND);
         TranslatableComponent flat = asTranslatable(lines.get(2));
         assertEquals("attribute.modifier.equals.0", flat.key());
         assertEquals(NamedTextColor.DARK_GREEN, flat.color());
@@ -113,7 +116,7 @@ class LoreComposerTest {
         List<Component> lines = LoreComposer.buildSection(List.of(
                 new ItemModifier(FLAT_KEY, Operation.ADD, 1, EquipmentSlotGroup.HEAD),
                 new ItemModifier(FLAT_KEY, Operation.ADD, 1, EquipmentSlotGroup.MAINHAND),
-                new ItemModifier(FLAT_KEY, Operation.ADD, 1, EquipmentSlotGroup.FEET)), RESOLVER);
+                new ItemModifier(FLAT_KEY, Operation.ADD, 1, EquipmentSlotGroup.FEET)), RESOLVER, COND);
         List<String> headers = lines.stream()
                 .filter(c -> c instanceof TranslatableComponent t && t.key().startsWith("item.modifiers."))
                 .map(c -> ((TranslatableComponent) c).key())
@@ -126,8 +129,21 @@ class LoreComposerTest {
     void unknownAttributeFallsBack() {
         List<Component> lines = LoreComposer.buildSection(List.of(
                 new ItemModifier(NamespacedKey.fromString("other:unknown"), Operation.ADD, 1,
-                        EquipmentSlotGroup.MAINHAND)), key -> null);
+                        EquipmentSlotGroup.MAINHAND)), key -> null, COND);
         assertEquals(3, lines.size());
+    }
+
+    @Test
+    @DisplayName("条件付きモディファイアには灰色の条件サフィックスが付く")
+    void conditionSuffix() {
+        List<Component> lines = LoreComposer.buildSection(List.of(
+                new ItemModifier(FLAT_KEY, Operation.ADD, 5, EquipmentSlotGroup.MAINHAND,
+                        NamespacedKey.fromString("attributelib:night"))), RESOLVER, COND);
+        Component line = lines.get(2);
+        // 子に「 (」+条件名+「)」が付いている
+        assertEquals(1, line.children().size());
+        Component suffix = line.children().getFirst();
+        assertEquals(NamedTextColor.GRAY, suffix.color());
     }
 
     @Test

@@ -45,6 +45,7 @@ public final class Attributelib extends JavaPlugin {
     public void onEnable() {
         StandardAttributes.init(this, engine, elements);
         engine.registerBridges();
+        DIV.attributelib.api.Conditions.initStandard(this);
 
         getServer().getPluginManager().registerEvents(new CleanupListener(engine), this);
         getServer().getPluginManager().registerEvents(new DamageListener(engine, elements), this);
@@ -86,5 +87,9 @@ public final class Attributelib extends JavaPlugin {
 
     public ElementRegistry elements() {
         return elements;
+    }
+
+    public DIV.attributelib.core.ConditionRegistry conditions() {
+        return engine.conditions();
     }
 }

@@ -47,10 +47,12 @@ public final class LoreComposer {
     /**
      * モディファイア一覧から lore セクション(行リスト)を組み立てる。
      *
-     * @param typeResolver 属性キー → 定義の解決(未登録属性は ID をそのまま表示名にする)
+     * @param typeResolver      属性キー → 定義の解決(未登録属性は ID をそのまま表示名にする)
+     * @param conditionResolver 条件キー → 表示名の解決(未登録は ID を表示)
      */
     public static List<Component> buildSection(List<ItemModifier> modifiers,
-                                               Function<NamespacedKey, AttributeType> typeResolver) {
+                                               Function<NamespacedKey, AttributeType> typeResolver,
+                                               Function<NamespacedKey, Component> conditionResolver) {
         List<Component> lines = new ArrayList<>();
         for (EquipmentSlotGroup group : GROUP_ORDER) {
             List<ItemModifier> inGroup = modifiers.stream()
@@ -69,7 +71,15 @@ public final class LoreComposer {
                         ? type.displayName()
                         : Component.text(modifier.attribute().toString());
                 boolean percent = type != null && type.percentDisplay();
-                lines.add(line(modifier, name, percent));
+                Component line = line(modifier, name, percent);
+                if (modifier.condition() != null) {
+                    // 条件サフィックス: 灰色の「(夜間)」をバニラ行の後ろに添える
+                    line = line.append(Component.text(" (", NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false)
+                            .append(conditionResolver.apply(modifier.condition()))
+                            .append(Component.text(")")));
+                }
+                lines.add(line);
             }
         }
         return lines;

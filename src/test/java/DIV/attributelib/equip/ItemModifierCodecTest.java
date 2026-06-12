@@ -29,6 +29,17 @@ class ItemModifierCodecTest {
     }
 
     @Test
+    @DisplayName("条件付きでもラウンドトリップが一致し、旧4フィールド形式も読める")
+    void conditionRoundTripAndLegacy() {
+        ItemModifier conditional = new ItemModifier(KEY, Operation.ADD, 0.3,
+                EquipmentSlotGroup.MAINHAND, NamespacedKey.fromString("attributelib:night"));
+        assertEquals(conditional, ItemModifierCodec.parse(ItemModifierCodec.format(conditional)));
+
+        ItemModifier legacy = ItemModifierCodec.parse("myplugin:dodge_chance|ADD|0.3|mainhand");
+        assertEquals(new ItemModifier(KEY, Operation.ADD, 0.3, EquipmentSlotGroup.MAINHAND), legacy);
+    }
+
+    @Test
     @DisplayName("壊れた行は null になる(例外を投げない)")
     void malformed() {
         assertNull(ItemModifierCodec.parse(""));

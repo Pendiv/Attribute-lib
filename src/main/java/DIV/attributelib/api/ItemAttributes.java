@@ -53,6 +53,14 @@ public final class ItemAttributes {
         write(item, modifiers);
     }
 
+    /** 条件付きのカスタム属性モディファイア。装備中かつ条件成立中のみ効く(lore に条件が表示される)。 */
+    public static void add(ItemStack item, AttributeType type, Operation operation,
+                           double value, EquipmentSlotGroup slot, Condition condition) {
+        List<ItemModifier> modifiers = new ArrayList<>(get(item));
+        modifiers.add(new ItemModifier(type.key(), operation, value, slot, condition.key()));
+        write(item, modifiers);
+    }
+
     /**
      * アイテムにカスタム属性モディファイアが1つでもあるか。
      * meta のクローンを作らない読み取り専用ビューで判定するため、
@@ -120,7 +128,8 @@ public final class ItemAttributes {
             List<net.kyori.adventure.text.Component> currentLore =
                     meta.hasLore() ? meta.lore() : List.of();
             LoreComposer.Splice result = LoreComposer.splice(currentLore, oldStart, oldLength,
-                    LoreComposer.buildSection(modifiers, ItemAttributes::resolveType));
+                    LoreComposer.buildSection(modifiers, ItemAttributes::resolveType,
+                            ItemAttributes::resolveConditionName));
             meta.lore(result.lore().isEmpty() ? null : result.lore());
             if (result.start() < 0) {
                 meta.getPersistentDataContainer().remove(LORE_SECTION_KEY);
@@ -135,6 +144,14 @@ public final class ItemAttributes {
     private static AttributeType resolveType(NamespacedKey key) {
         DIV.attributelib.Attributelib plugin = DIV.attributelib.Attributelib.instance();
         return plugin != null ? plugin.engine().byKey(key) : null;
+    }
+
+    /** 表示用の条件名解決。未登録条件はキー名をそのまま表示する。 */
+    private static net.kyori.adventure.text.Component resolveConditionName(NamespacedKey key) {
+        DIV.attributelib.Attributelib plugin = DIV.attributelib.Attributelib.instance();
+        Condition condition = plugin != null ? plugin.engine().conditions().byKey(key) : null;
+        return condition != null ? condition.displayName()
+                : net.kyori.adventure.text.Component.text(key.toString());
     }
 
     // ---- バニラ属性(attribute_modifiers コンポーネント) ----

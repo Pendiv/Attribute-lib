@@ -77,6 +77,50 @@ ItemAttributes.add(pickaxe, Vanilla.MINING_EFFICIENCY, Operation.ADD, 10, Equipm
 
 生のバニラ API に近い冪等ヘルパーが必要なら `VanillaAttributes.set / setTransient / remove` もある。
 
+### 適用条件
+
+モディファイアに条件を付けると、成立している間だけ効く。カスタム属性・バニラブリッジ・
+アイテムのどれでも同じに使える:
+
+```java
+// 夜間のみ攻撃力+3
+Attributes.add(mob, Vanilla.ATTACK_DAMAGE, "myplugin:trait/nocturnal",
+        Operation.ADD, 3, Conditions.NIGHT);
+
+// 水中のみ採掘速度2倍のツルハシ(lore に「(水中)」が自動表示)
+ItemAttributes.add(pickaxe, Vanilla.SUBMERGED_MINING_SPEED,
+        Operation.MULTIPLY, 2.0, EquipmentSlotGroup.MAINHAND, Conditions.IN_WATER);
+
+// 独自条件も1行(キーだけが保存され、評価時にレジストリから引き直される)
+Condition BOSS_NEARBY = Conditions.register(this, "boss_nearby",
+        Component.text("ボス接近中"), entity -> ...);
+```
+
+標準条件: `DAY / NIGHT / IN_WATER / UNDERWATER / IN_LAVA / IN_RAIN / BURNING /
+IN_OVERWORLD / IN_NETHER / IN_THE_END / SNEAKING / ON_GROUND / FULL_HEALTH`
+
+ポーション効果の保持判定は全エフェクト分が自動登録済み(`attributelib:effect/<名前>`):
+
+```java
+// 毒状態の間だけ被ダメ+50%
+Attributes.add(mob, StandardAttributes.DAMAGE_TAKEN, "myplugin:trait/frail",
+        Operation.ADD, 0.5, Conditions.hasEffect(PotionEffectType.POISON));
+```
+
+合成(AND / OR / NOT)も1行 — 合成結果も独立した条件キーを持つので永続化・lore 表示が効く:
+
+```java
+Condition NETHER_BURNING = Conditions.allOf(this, "nether_burning",
+        Conditions.IN_NETHER, Conditions.BURNING);
+Condition NOT_NIGHT = Conditions.not(this, "not_night", Conditions.NIGHT);
+Condition WET = Conditions.anyOf(this, "wet", Conditions.IN_WATER, Conditions.IN_RAIN);
+```
+
+仕組み: カスタム属性は読み取りの瞬間に評価(コストはイベント時のみ)。バニラブリッジは
+条件の反転を周期タスクが書き戻す — このタスクは「条件付きブリッジを持つエンティティが
+存在する間だけ」稼働し、値が変わらなければ書き込みもしない。提供元プラグインが抜けて
+未解決になった条件は「不成立」として扱われる(効果が残留する側に倒さない)。
+
 ### 層2: ダメージ
 
 標準属性(全エンティティで利用可): `damage_dealt` `damage_taken` `crit_chance` `crit_damage`

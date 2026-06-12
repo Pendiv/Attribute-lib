@@ -91,7 +91,8 @@ public final class EquipmentSyncListener implements Listener {
             if (type == null) {
                 continue; // 未登録属性(提供元プラグインが抜けた等)は黙ってスキップ
             }
-            engine.add(entity, type, source, modifier.operation(), modifier.value(), 0, false);
+            engine.add(entity, type, source, modifier.operation(), modifier.value(), 0, false,
+                    modifier.condition());
         }
     }
 
