@@ -8,6 +8,8 @@ import DIV.attributelib.api.ItemModifier;
 import DIV.attributelib.api.ModifierHandle;
 import DIV.attributelib.api.Operation;
 import DIV.attributelib.api.StandardAttributes;
+import DIV.attributelib.api.Vanilla;
+import DIV.attributelib.api.VanillaAttributes;
 import DIV.attributelib.core.AttributeEngine;
 import DIV.attributelib.core.Modifier;
 import DIV.attributelib.damage.DamageTypes;
@@ -100,6 +102,9 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             StringBuilder line = new StringBuilder("  " + type.key() + "  default=" + type.defaultValue());
             if (type.min() != -Double.MAX_VALUE || type.max() != Double.MAX_VALUE) {
                 line.append("  range=[").append(type.min()).append(", ").append(type.max()).append(']');
+            }
+            if (engine.isBridged(type.key())) {
+                line.append("  [vanilla]");
             }
             sender.sendMessage(line.toString());
         }
@@ -203,6 +208,9 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
      */
     private void smoke(CommandSender sender) {
         World world = Bukkit.getWorlds().getFirst();
+        // プレイヤー不在環境ではスポーンチャンクのエンティティセクションがアンロードされて
+        // 検証用エンティティがワールドから外れてしまうため、テスト中だけチケットで保持する
+        world.getChunkAt(world.getSpawnLocation()).addPluginChunkTicket(plugin);
         ArmorStand stand = world.spawn(world.getSpawnLocation(), ArmorStand.class, s -> {
             s.setMarker(true);
             s.setInvisible(true);
@@ -309,6 +317,34 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             equipZombie.remove();
         }
 
+        // バニラブリッジの検証(別ゾンビ。フェーズ2で時限失効も見る)
+        Zombie bridgeZombie = world.spawn(world.getSpawnLocation(), Zombie.class, z -> {
+            z.setAI(false);
+            z.setSilent(true);
+            z.setPersistent(false);
+        });
+        try {
+            double baseMax = bridgeZombie.getAttribute(Attribute.MAX_HEALTH).getValue();
+            engine.add(bridgeZombie, Vanilla.MAX_HEALTH, SMOKE_SOURCE, Operation.ADD, 10, 0, true);
+            check(failures, "ブリッジ: max_health +10 がバニラ値に反映",
+                    bridgeZombie.getAttribute(Attribute.MAX_HEALTH).getValue(), baseMax + 10);
+
+            // 再ロード相当: キャッシュ破棄+バニラモディファイア喪失(transient のアンロード)を
+            // 模擬し、状態の再構築で永続データから復元されること
+            engine.evict(bridgeZombie.getUniqueId());
+            VanillaAttributes.remove(bridgeZombie, Attribute.MAX_HEALTH, AttributeEngine.BRIDGE_KEY);
+            engine.touch(bridgeZombie);
+            check(failures, "ブリッジ: 再ロード後も永続データから復元",
+                    bridgeZombie.getAttribute(Attribute.MAX_HEALTH).getValue(), baseMax + 10);
+
+            // 時限ブリッジ(1tick): フェーズ2で deadline タスクによる自動復帰を確認
+            double baseArmor = bridgeZombie.getAttribute(Attribute.ARMOR).getValue();
+            engine.add(bridgeZombie, Vanilla.ARMOR, SMOKE_SOURCE, Operation.ADD, 5, 1, true);
+            check(failures, "ブリッジ: 時限 armor +5", bridgeZombie.getAttribute(Attribute.ARMOR).getValue(), baseArmor + 5);
+        } catch (Exception e) {
+            failures.add("例外発生(ブリッジ検証): " + e);
+        }
+
         // フェーズ2(2tick 後): 時限モディファイアが gameTime 進行で自動失効していること
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             try {
@@ -318,12 +354,31 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
                 engine.removeBySource(stand, SMOKE_SOURCE);
                 engine.resetBase(stand, type);
                 check(failures, "resetBase で default に復帰", engine.get(stand, type), SMOKE_DEFAULT);
+
             } catch (Exception e) {
                 failures.add("例外発生(フェーズ2): " + e);
             } finally {
                 stand.remove();
             }
-            report(sender, failures);
+
+            // フェーズ3(さらに 4tick 後): ブリッジの時限失効。
+            // プレイヤー不在環境ではエンティティのワールド除去→再追加で deadline タスクが
+            // キャンセル→再武装されるため(自己修復)、発火に余裕を持たせて検証する
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                try {
+                    check(failures, "ブリッジ: 時限 armor が deadline タスクで失効",
+                            bridgeZombie.getAttribute(Attribute.ARMOR).getValue(), 2);
+                    engine.removeBySource(bridgeZombie, SMOKE_SOURCE);
+                    check(failures, "ブリッジ: removeAll で復元",
+                            bridgeZombie.getAttribute(Attribute.MAX_HEALTH).getValue(), 20);
+                } catch (Exception e) {
+                    failures.add("例外発生(フェーズ3): " + e);
+                } finally {
+                    bridgeZombie.remove();
+                    world.getChunkAt(world.getSpawnLocation()).removePluginChunkTicket(plugin);
+                }
+                report(sender, failures);
+            }, 4L);
         }, 2L);
     }
 

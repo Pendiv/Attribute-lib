@@ -32,6 +32,7 @@ import java.util.logging.Logger;
  */
 final class EntityAttributes {
 
+    private final AttributeEngine engine;
     private final LivingEntity entity;
     private final NamespacedKey baseKey;
     private final NamespacedKey modifiersKey;
@@ -50,12 +51,15 @@ final class EntityAttributes {
      */
     private long nearestExpiry = Long.MAX_VALUE;
 
-    EntityAttributes(LivingEntity entity, NamespacedKey baseKey, NamespacedKey modifiersKey, Logger logger) {
+    EntityAttributes(AttributeEngine engine, LivingEntity entity,
+                     NamespacedKey baseKey, NamespacedKey modifiersKey, Logger logger) {
+        this.engine = engine;
         this.entity = entity;
         this.baseKey = baseKey;
         this.modifiersKey = modifiersKey;
         this.logger = logger;
         load();
+        // load() 中は変更通知を出さない(ブリッジ反映は engine.of() が一括で行う)
     }
 
     LivingEntity entity() {
@@ -100,13 +104,20 @@ final class EntityAttributes {
         base.put(type.key(), value);
         finalCache.remove(type.key());
         saveBase();
+        engine.onStateChanged(this, type.key());
     }
 
     void resetBase(AttributeType type) {
         if (base.remove(type.key()) != null) {
             finalCache.remove(type.key());
             saveBase();
+            engine.onStateChanged(this, type.key());
         }
+    }
+
+    /** この属性に明示的な base が設定されているか(ブリッジの getBase ルーティング用)。 */
+    boolean hasExplicitBase(AttributeType type) {
+        return base.containsKey(type.key());
     }
 
     ModifierHandle add(Modifier modifier) {
@@ -118,22 +129,30 @@ final class EntityAttributes {
         if (modifier.persistent()) {
             saveModifiers();
         }
+        engine.onStateChanged(this, modifier.attribute());
         return new Handle(modifier);
     }
 
     void removeBySource(String sourceId) {
         boolean persistentRemoved = false;
         Iterator<Modifier> it = modifiers.iterator();
+        List<NamespacedKey> changed = new ArrayList<>(2);
         while (it.hasNext()) {
             Modifier m = it.next();
             if (m.sourceId().equals(sourceId)) {
                 it.remove();
                 finalCache.remove(m.attribute());
+                if (!changed.contains(m.attribute())) {
+                    changed.add(m.attribute());
+                }
                 persistentRemoved |= m.persistent();
             }
         }
         if (persistentRemoved) {
             saveModifiers();
+        }
+        for (NamespacedKey key : changed) {
+            engine.onStateChanged(this, key);
         }
     }
 
@@ -141,6 +160,45 @@ final class EntityAttributes {
 
     private long now() {
         return entity.getWorld().getGameTime();
+    }
+
+    /** 期限スイープを明示的に実行する(ブリッジの deadline タスク用)。 */
+    void sweep() {
+        sweepExpired();
+    }
+
+    /** 指定条件の属性を対象とする時限モディファイアの最短期限(なければ Long.MAX_VALUE)。 */
+    long nearestExpiryFor(java.util.function.Predicate<NamespacedKey> attributeFilter) {
+        long next = Long.MAX_VALUE;
+        for (Modifier m : modifiers) {
+            if (m.expiresAt() != Modifier.PERMANENT && attributeFilter.test(m.attribute())) {
+                next = Math.min(next, m.expiresAt());
+            }
+        }
+        return next;
+    }
+
+    /** base かモディファイアを持つ属性キーの一覧(ロード後のブリッジ一括反映用)。 */
+    java.util.Set<NamespacedKey> attributeKeysWithData() {
+        java.util.Set<NamespacedKey> keys = new java.util.LinkedHashSet<>(base.keySet());
+        for (Modifier m : modifiers) {
+            keys.add(m.attribute());
+        }
+        return keys;
+    }
+
+    /**
+     * ブリッジ属性用の計算: base 未設定ならバニラの base 値を土台に最終値を出す。
+     * この属性にデータが一切無ければ null(= バニラ側のモディファイアを消してよい)。
+     */
+    Double computeBridged(AttributeType type, double vanillaBase) {
+        sweepExpired();
+        List<Modifier> applicable = modifiersFor(type.key());
+        if (applicable.isEmpty() && !base.containsKey(type.key())) {
+            return null;
+        }
+        double baseValue = base.getOrDefault(type.key(), vanillaBase);
+        return Calculator.compute(type, baseValue, applicable);
     }
 
     private void sweepExpired() {
@@ -153,12 +211,16 @@ final class EntityAttributes {
         }
         boolean persistentRemoved = false;
         long next = Long.MAX_VALUE;
+        List<NamespacedKey> changed = new ArrayList<>(2);
         Iterator<Modifier> it = modifiers.iterator();
         while (it.hasNext()) {
             Modifier m = it.next();
             if (m.isExpired(now)) {
                 it.remove();
                 finalCache.remove(m.attribute());
+                if (!changed.contains(m.attribute())) {
+                    changed.add(m.attribute());
+                }
                 persistentRemoved |= m.persistent();
             } else if (m.expiresAt() != Modifier.PERMANENT) {
                 next = Math.min(next, m.expiresAt());
@@ -167,6 +229,9 @@ final class EntityAttributes {
         nearestExpiry = next;
         if (persistentRemoved) {
             saveModifiers();
+        }
+        for (NamespacedKey key : changed) {
+            engine.onStateChanged(this, key);
         }
     }
 
@@ -291,8 +356,11 @@ final class EntityAttributes {
                 return;
             }
             removed = true;
-            if (removeInstance(modifier) && modifier.persistent()) {
-                saveModifiers();
+            if (removeInstance(modifier)) {
+                if (modifier.persistent()) {
+                    saveModifiers();
+                }
+                engine.onStateChanged(EntityAttributes.this, modifier.attribute());
             }
         }
 

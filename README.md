@@ -55,7 +55,27 @@ h.remove();                                             // チケットで個別
 
 計算式: `final = clamp((base + ΣADD) × ΠMULTIPLY)`、SET があれば最後の SET が勝つ。
 
-バニラ属性の冪等な付け外しは `VanillaAttributes.set / setTransient / remove` を使う。
+### バニラ属性(ブリッジ)
+
+全バニラ属性(36種)が `Vanilla.*` 定数としてブリッジ登録されており、カスタム属性と
+完全に同じ API で操作できる。バニラ単体では不可能な「時限つきバニラ属性」も1行:
+
+```java
+// 30秒だけ最大HP+10(再起動・アンロードを跨いでも正確に失効)
+Attributes.add(mob, Vanilla.MAX_HEALTH, "myplugin:trait/tank", Operation.ADD, 10, 600);
+Attributes.removeAll(mob, "myplugin:trait/tank");
+
+// 採掘速度: プレイヤーに直接、またはツルハシ(装備中のみ有効)に
+Attributes.add(player, Vanilla.BLOCK_BREAK_SPEED, "myplugin:buff", Operation.MULTIPLY, 1.5, 200);
+ItemAttributes.add(pickaxe, Vanilla.MINING_EFFICIENCY, Operation.ADD, 10, EquipmentSlotGroup.MAINHAND);
+```
+
+仕組み: 管理は attributelib 側が持ち、合成結果だけを transient なバニラモディファイアとして
+書き込む(NBT に残らないのでゴースト強化なし)。時限の失効は「期限ちょうどに1回だけ」の
+タスクで反映する(毎 tick 監視はしない)。`Attributes.get` はバニラの最終値
+(他プラグインのモディファイア込み)を返す。
+
+生のバニラ API に近い冪等ヘルパーが必要なら `VanillaAttributes.set / setTransient / remove` もある。
 
 ### 層2: ダメージ
 

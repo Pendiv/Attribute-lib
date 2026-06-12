@@ -44,6 +44,7 @@ public final class Attributelib extends JavaPlugin {
     @Override
     public void onEnable() {
         StandardAttributes.init(this, engine, elements);
+        engine.registerBridges();
 
         getServer().getPluginManager().registerEvents(new CleanupListener(engine), this);
         getServer().getPluginManager().registerEvents(new DamageListener(engine, elements), this);

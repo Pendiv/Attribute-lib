@@ -2,7 +2,9 @@ package DIV.attributelib.listener;
 
 import DIV.attributelib.core.AttributeEngine;
 import DIV.attributelib.damage.DamageTypes;
+import com.destroystokyo.paper.event.entity.EntityAddToWorldEvent;
 import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -25,6 +27,18 @@ public final class CleanupListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemove(EntityRemoveEvent event) {
         engine.evict(event.getEntity().getUniqueId());
+    }
+
+    /**
+     * ロード時のブリッジ復元。永続データを持つエンティティだけ状態を構築し、
+     * バニラブリッジの transient モディファイア再適用と失効タスクの再武装を行う
+     * (どちらも状態構築時にエンジンが自動でやるため、ここでは触れるだけ)。
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onAddToWorld(EntityAddToWorldEvent event) {
+        if (event.getEntity() instanceof LivingEntity living && engine.hasData(living)) {
+            engine.touch(living);
+        }
     }
 
     /** /reload でデータパックのタグが変わりうるため、ダメージタイプ系キャッシュを破棄する。 */
