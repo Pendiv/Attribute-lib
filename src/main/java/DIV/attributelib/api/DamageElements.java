@@ -63,6 +63,13 @@ public final class DamageElements {
         return registry().register(plugin, id);
     }
 
+    /** 表示名付き登録(lore 表示用。属性ペアは百分率表示になる)。 */
+    public static DamageElement register(Plugin plugin, String id,
+                                         net.kyori.adventure.text.Component damageDisplayName,
+                                         net.kyori.adventure.text.Component resistDisplayName) {
+        return registry().register(plugin, id, damageDisplayName, resistDisplayName);
+    }
+
     /** 登録と同時にダメージタイプを紐付けるショートカット。 */
     public static DamageElement register(Plugin plugin, String id, NamespacedKey... damageTypeKeys) {
         DamageElement element = registry().register(plugin, id);

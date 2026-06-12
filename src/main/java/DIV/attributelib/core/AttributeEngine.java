@@ -42,9 +42,14 @@ public final class AttributeEngine {
     }
 
     public AttributeType register(Plugin owner, String id, double defaultValue, double min, double max) {
+        return register(owner, id, defaultValue, min, max, null, false);
+    }
+
+    public AttributeType register(Plugin owner, String id, double defaultValue, double min, double max,
+                                  net.kyori.adventure.text.Component displayName, boolean percentDisplay) {
         checkMainThread();
         NamespacedKey key = new NamespacedKey(owner, id);
-        AttributeType type = new AttributeType(key, defaultValue, min, max);
+        AttributeType type = new AttributeType(key, defaultValue, min, max, displayName, percentDisplay);
         AttributeType existing = registry.putIfAbsent(key, type);
         if (existing != null) {
             throw new IllegalStateException("属性が二重登録されました: " + key);

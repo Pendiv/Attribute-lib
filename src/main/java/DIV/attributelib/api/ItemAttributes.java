@@ -1,8 +1,10 @@
 package DIV.attributelib.api;
 
 import DIV.attributelib.equip.ItemModifierCodec;
+import DIV.attributelib.equip.LoreComposer;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemAttributeModifiers;
+import io.papermc.paper.datacomponent.item.attribute.AttributeModifierDisplay;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
@@ -35,6 +37,7 @@ import java.util.logging.Logger;
 public final class ItemAttributes {
 
     private static final NamespacedKey MODIFIERS_KEY = new NamespacedKey("attributelib", "item_modifiers");
+    private static final NamespacedKey LORE_SECTION_KEY = new NamespacedKey("attributelib", "lore_section");
     private static final Logger LOGGER = Logger.getLogger("attributelib");
 
     private ItemAttributes() {
@@ -87,28 +90,64 @@ public final class ItemAttributes {
 
     private static void write(ItemStack item, List<ItemModifier> modifiers) {
         item.editMeta(meta -> {
+            // 1. PDC へモディファイア本体を保存
             if (modifiers.isEmpty()) {
                 meta.getPersistentDataContainer().remove(MODIFIERS_KEY);
-                return;
+            } else {
+                List<String> lines = new ArrayList<>(modifiers.size());
+                for (ItemModifier modifier : modifiers) {
+                    lines.add(ItemModifierCodec.format(modifier));
+                }
+                meta.getPersistentDataContainer().set(MODIFIERS_KEY, PersistentDataType.LIST.strings(), lines);
             }
-            List<String> lines = new ArrayList<>(modifiers.size());
-            for (ItemModifier modifier : modifiers) {
-                lines.add(ItemModifierCodec.format(modifier));
+
+            // 2. lore セクションを更新(層4: 書き込みはこの1箇所に集約)
+            int[] section = meta.getPersistentDataContainer()
+                    .get(LORE_SECTION_KEY, PersistentDataType.INTEGER_ARRAY);
+            int oldStart = section != null && section.length == 2 ? section[0] : -1;
+            int oldLength = section != null && section.length == 2 ? section[1] : 0;
+            List<net.kyori.adventure.text.Component> currentLore =
+                    meta.hasLore() ? meta.lore() : List.of();
+            LoreComposer.Splice result = LoreComposer.splice(currentLore, oldStart, oldLength,
+                    LoreComposer.buildSection(modifiers, ItemAttributes::resolveType));
+            meta.lore(result.lore().isEmpty() ? null : result.lore());
+            if (result.start() < 0) {
+                meta.getPersistentDataContainer().remove(LORE_SECTION_KEY);
+            } else {
+                meta.getPersistentDataContainer().set(LORE_SECTION_KEY,
+                        PersistentDataType.INTEGER_ARRAY, new int[]{result.start(), result.length()});
             }
-            meta.getPersistentDataContainer().set(MODIFIERS_KEY, PersistentDataType.LIST.strings(), lines);
         });
+    }
+
+    /** 表示用の属性解決。attributelib 未ロード(テスト等)や未登録属性は null。 */
+    private static AttributeType resolveType(NamespacedKey key) {
+        DIV.attributelib.Attributelib plugin = DIV.attributelib.Attributelib.instance();
+        return plugin != null ? plugin.engine().byKey(key) : null;
     }
 
     // ---- バニラ属性(attribute_modifiers コンポーネント) ----
 
     /**
      * バニラ属性モディファイアをアイテムへ冪等に設定する(同キーは置き換え)。
-     * 素材本来の基礎ステータス(デフォルトモディファイア)は保持される。
+     * 素材本来の基礎ステータス(デフォルトモディファイア)は保持され、
+     * 表示はバニラ標準のまま(色・書式ともバニラルール)。
      */
     public static void setVanilla(ItemStack item, Attribute attribute, NamespacedKey key,
                                   AttributeModifier.Operation operation, double amount, EquipmentSlotGroup slot) {
+        setVanilla(item, attribute, key, operation, amount, slot, AttributeModifierDisplay.reset());
+    }
+
+    /**
+     * 表示指定付きのバニラ属性設定。{@link AttributeModifierDisplay#hidden()} で非表示、
+     * {@link AttributeModifierDisplay#override(net.kyori.adventure.text.ComponentLike)} で
+     * 行そのものを自前デザインに置換できる(クライアント描画なので lore を汚さない)。
+     */
+    public static void setVanilla(ItemStack item, Attribute attribute, NamespacedKey key,
+                                  AttributeModifier.Operation operation, double amount,
+                                  EquipmentSlotGroup slot, AttributeModifierDisplay display) {
         ItemAttributeModifiers.Builder builder = copyWithout(item, key);
-        builder.addModifier(attribute, new AttributeModifier(key, amount, operation, slot), slot);
+        builder.addModifier(attribute, new AttributeModifier(key, amount, operation, slot), slot, display);
         item.setData(DataComponentTypes.ATTRIBUTE_MODIFIERS, builder.build());
     }
 

@@ -59,9 +59,20 @@ public final class Attributes {
         return engine().register(plugin, id, defaultValue, -Double.MAX_VALUE, Double.MAX_VALUE);
     }
 
-    /** 範囲付き登録。最終値が [min, max] にクランプされる(確率属性 0..100 など)。 */
+    /** 範囲付き登録。最終値が [min, max] にクランプされる(確率属性 0..1 など)。 */
     public static AttributeType register(Plugin plugin, String id, double defaultValue, double min, double max) {
         return engine().register(plugin, id, defaultValue, min, max);
+    }
+
+    /**
+     * 表示情報付き登録。
+     *
+     * @param displayName    lore 表示などで使う表示名(null なら ID から自動生成)
+     * @param percentDisplay true なら値を百分率で表示(確率・割合系の属性向け。0.25 → +25%)
+     */
+    public static AttributeType register(Plugin plugin, String id, double defaultValue, double min, double max,
+                                         net.kyori.adventure.text.Component displayName, boolean percentDisplay) {
+        return engine().register(plugin, id, defaultValue, min, max, displayName, percentDisplay);
     }
 
     // ---- 読み取り ----

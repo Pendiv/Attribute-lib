@@ -3,6 +3,7 @@ package DIV.attributelib.api;
 import DIV.attributelib.core.AttributeEngine;
 import DIV.attributelib.damage.DamageTypes;
 import DIV.attributelib.damage.ElementRegistry;
+import net.kyori.adventure.text.Component;
 import org.bukkit.NamespacedKey;
 import org.bukkit.plugin.Plugin;
 
@@ -73,19 +74,31 @@ public final class StandardAttributes {
         if (DAMAGE_DEALT != null) {
             throw new IllegalStateException("StandardAttributes は初期化済みです");
         }
-        DAMAGE_DEALT = engine.register(attributelib, "damage_dealt", 1.0, 0.0, Double.MAX_VALUE);
-        DAMAGE_TAKEN = engine.register(attributelib, "damage_taken", 1.0, 0.0, Double.MAX_VALUE);
-        CRIT_CHANCE = engine.register(attributelib, "crit_chance", 0.0, 0.0, 1.0);
-        CRIT_DAMAGE = engine.register(attributelib, "crit_damage", 1.5, 1.0, Double.MAX_VALUE);
-        CRIT_RESIST = engine.register(attributelib, "crit_resist", 0.0, 0.0, 1.0);
-        ARMOR_PENETRATION = engine.register(attributelib, "armor_penetration", 0.0, 0.0, 1.0);
-        ARMOR_PENETRATION_FLAT = engine.register(attributelib, "armor_penetration_flat", 0.0, 0.0, Double.MAX_VALUE);
-        HEAL_MULTIPLIER = engine.register(attributelib, "heal_multiplier", 1.0, 0.0, Double.MAX_VALUE);
+        DAMAGE_DEALT = engine.register(attributelib, "damage_dealt", 1.0, 0.0, Double.MAX_VALUE,
+                Component.text("与ダメージ"), true);
+        DAMAGE_TAKEN = engine.register(attributelib, "damage_taken", 1.0, 0.0, Double.MAX_VALUE,
+                Component.text("被ダメージ"), true);
+        CRIT_CHANCE = engine.register(attributelib, "crit_chance", 0.0, 0.0, 1.0,
+                Component.text("会心率"), true);
+        CRIT_DAMAGE = engine.register(attributelib, "crit_damage", 1.5, 1.0, Double.MAX_VALUE,
+                Component.text("会心ダメージ"), true);
+        CRIT_RESIST = engine.register(attributelib, "crit_resist", 0.0, 0.0, 1.0,
+                Component.text("会心耐性"), true);
+        ARMOR_PENETRATION = engine.register(attributelib, "armor_penetration", 0.0, 0.0, 1.0,
+                Component.text("防具貫通"), true);
+        ARMOR_PENETRATION_FLAT = engine.register(attributelib, "armor_penetration_flat", 0.0, 0.0, Double.MAX_VALUE,
+                Component.text("防具貫通値"), false);
+        HEAL_MULTIPLIER = engine.register(attributelib, "heal_multiplier", 1.0, 0.0, Double.MAX_VALUE,
+                Component.text("回復量"), true);
 
-        DamageElement physical = elements.register(attributelib, "physical");
-        DamageElement magic = elements.register(attributelib, "magic");
-        DamageElement fire = elements.register(attributelib, "fire");
-        DamageElement lightning = elements.register(attributelib, "lightning");
+        DamageElement physical = elements.register(attributelib, "physical",
+                Component.text("物理与ダメージ"), Component.text("物理耐性"));
+        DamageElement magic = elements.register(attributelib, "magic",
+                Component.text("魔法与ダメージ"), Component.text("魔法耐性"));
+        DamageElement fire = elements.register(attributelib, "fire",
+                Component.text("炎与ダメージ"), Component.text("炎耐性"));
+        DamageElement lightning = elements.register(attributelib, "lightning",
+                Component.text("雷与ダメージ"), Component.text("雷耐性"));
         DamageElements.initBuiltins(physical, magic, fire, lightning);
 
         PHYSICAL_DAMAGE = physical.damageAttribute();

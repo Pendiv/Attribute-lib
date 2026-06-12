@@ -260,6 +260,18 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             ItemAttributes.add(sword, smokeType(), Operation.ADD, 50, EquipmentSlotGroup.MAINHAND);
             ItemAttributes.add(sword, smokeType(), Operation.ADD, 999, EquipmentSlotGroup.HEAD);
 
+            // lore 自動更新(層4): 付与でセクション生成(2グループ = 6行)、clear で完全に消える
+            List<net.kyori.adventure.text.Component> lore =
+                    sword.hasItemMeta() ? sword.getItemMeta().lore() : null;
+            check(failures, "lore セクション生成(空行+ヘッダ+行 ×2グループ)",
+                    lore == null ? 0 : lore.size(), 6);
+            ItemStack cleared = sword.clone();
+            ItemAttributes.clear(cleared);
+            if (cleared.hasItemMeta() && cleared.getItemMeta().lore() != null
+                    && !cleared.getItemMeta().lore().isEmpty()) {
+                failures.add("clear 後も lore が残っています");
+            }
+
             equipZombie.getEquipment().setItemInMainHand(sword);
             callEquipChanged(equipZombie, EquipmentSlot.HAND, ItemStack.empty(), sword);
             check(failures, "装備同期: MAINHAND +50(HEAD 分は除外)",

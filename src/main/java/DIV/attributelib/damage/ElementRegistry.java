@@ -31,13 +31,22 @@ public final class ElementRegistry {
      * {@code <id>_resist}(軽減割合、既定0.0)の属性ペアを自動登録する。
      */
     public DamageElement register(Plugin owner, String id) {
+        return register(owner, id, null, null);
+    }
+
+    /** 表示名付き登録。属性ペアはどちらも百分率表示になる。 */
+    public DamageElement register(Plugin owner, String id,
+                                  net.kyori.adventure.text.Component damageDisplayName,
+                                  net.kyori.adventure.text.Component resistDisplayName) {
         AttributeEngine.checkMainThread();
         NamespacedKey key = new NamespacedKey(owner, id);
         if (elements.containsKey(key)) {
             throw new IllegalStateException("元素が二重登録されました: " + key);
         }
-        AttributeType damage = engine.register(owner, id + "_damage", 1.0, 0.0, Double.MAX_VALUE);
-        AttributeType resist = engine.register(owner, id + "_resist", 0.0, -Double.MAX_VALUE, 1.0);
+        AttributeType damage = engine.register(owner, id + "_damage", 1.0, 0.0, Double.MAX_VALUE,
+                damageDisplayName, true);
+        AttributeType resist = engine.register(owner, id + "_resist", 0.0, -Double.MAX_VALUE, 1.0,
+                resistDisplayName, true);
         DamageElement element = new DamageElement(key, damage, resist);
         elements.put(key, element);
         return element;
