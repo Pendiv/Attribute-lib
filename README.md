@@ -157,6 +157,50 @@ ItemAttributes.add(sword, StandardAttributes.CRIT_CHANCE,
 - 既存の lore(説明文)は壊さない。バニラ属性の表示を変えたい場合は
   `ItemAttributes.setVanilla(..., AttributeModifierDisplay.override(...))`
 
+## ステータスサイドバー(/sideboard)
+
+プレイヤーが最大3ジャンルを選んで、選択順に上から表示する内蔵サイドバー(依存なし):
+
+```
+/sideboard combat resist user   選択順に表示(タブ補完あり)
+/sideboard on / off             表示切り替え(選択は記憶され、再ログインでも復元)
+```
+
+標準ジャンル: `combat`(戦闘系) / `resist`(耐性) / `status`(ステータス) / `user`(ユーザー情報)。
+
+ジャンルも行も外部プラグインから拡張できる。標準行は ID を持つので差し替えも可能:
+
+```java
+// ステータスに現在座標を追加
+Sideboard.addLine("status", Sideboard.line("position",
+        Component.text("座標", NamedTextColor.GREEN),
+        p -> Component.text(p.getBlockX() + ", " + p.getBlockY() + ", " + p.getBlockZ())));
+
+// 標準の難易度行を自前の値に差し替え(例: EnhancedMobs の危険度)
+Sideboard.removeLine("user", "difficulty");
+Sideboard.addLine("user", Sideboard.line("difficulty",
+        Component.text("難易度", NamedTextColor.WHITE), p -> Component.text(myDanger(p))));
+
+// 新ジャンルの追加(クエスト等)
+Sideboard.registerGenre(this, "quest", Component.text("クエスト:", NamedTextColor.GOLD), List.of(...));
+```
+
+更新は1秒間隔で、表示中のプレイヤーがいる間だけタスクが動く。
+
+## PlaceholderAPI 連携
+
+PlaceholderAPI 導入時は自動で拡張が登録され、スコアボード・TAB・ホログラム等から
+属性値を表示できる(未導入なら何もしない):
+
+```
+%attributelib_<属性>%        最終値(％表示属性は「25%」形式)   例: %attributelib_crit_chance%
+%attributelib_raw_<属性>%    生の数値                           例: %attributelib_raw_max_health%
+%attributelib_base_<属性>%   基礎値
+%attributelib_cond_<条件>%   条件の成否(true/false)            例: %attributelib_cond_night%
+```
+
+属性・条件は `ns:id` 形式か、名前空間省略(attributelib → minecraft の順で解決)。
+
 ## デバッグコマンド(`/alib`、OP 権限)
 
 | コマンド | 内容 |

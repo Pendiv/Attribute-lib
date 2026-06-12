@@ -26,6 +26,7 @@ public final class Attributelib extends JavaPlugin {
 
     private AttributeEngine engine;
     private ElementRegistry elements;
+    private DIV.attributelib.sideboard.SideboardManager sideboard;
 
     @Override
     public void onLoad() {
@@ -51,6 +52,25 @@ public final class Attributelib extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new DamageListener(engine, elements), this);
         getServer().getPluginManager().registerEvents(new HealListener(engine), this);
         getServer().getPluginManager().registerEvents(new EquipmentSyncListener(engine), this);
+
+        // サイドバー(標準ジャンルがブリッジ属性を参照するため registerBridges 後に生成)
+        sideboard = new DIV.attributelib.sideboard.SideboardManager(this, engine);
+        getServer().getPluginManager().registerEvents(sideboard, this);
+        var sideboardCommand = new DIV.attributelib.sideboard.SideboardCommand(sideboard);
+        PluginCommand sideboardPluginCommand = getCommand("sideboard");
+        if (sideboardPluginCommand == null) {
+            throw new IllegalStateException("plugin.yml に sideboard コマンドが定義されていません");
+        }
+        sideboardPluginCommand.setExecutor(sideboardCommand);
+        sideboardPluginCommand.setTabCompleter(sideboardCommand);
+
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            // PAPI が居る時だけ拡張クラスをロードする(softdepend なのでクラス参照をここに隔離)
+            var expansion = new DIV.attributelib.papi.AttributelibExpansion(this, engine);
+            expansion.register();
+            getServer().getPluginManager().registerEvents(expansion, this); // 退出時のスナップショット掃除
+            getLogger().info("PlaceholderAPI 連携を登録しました (%attributelib_...%)");
+        }
 
         List<NamespacedKey> missing = DamageTypes.missingTypes();
         if (!missing.isEmpty()) {
@@ -91,5 +111,9 @@ public final class Attributelib extends JavaPlugin {
 
     public DIV.attributelib.core.ConditionRegistry conditions() {
         return engine.conditions();
+    }
+
+    public DIV.attributelib.sideboard.SideboardManager sideboard() {
+        return sideboard;
     }
 }

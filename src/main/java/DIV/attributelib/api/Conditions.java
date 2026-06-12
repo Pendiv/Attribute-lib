@@ -217,7 +217,7 @@ public final class Conditions {
                 .getRegistry(RegistryKey.MOB_EFFECT)) {
             NamespacedKey key = effectConditionKey(effect);
             registry().register(attributelib, key.getKey(),
-                    Component.translatable(effect.getTranslationKey()),
+                    Component.translatable(effect),
                     entity -> entity.hasPotionEffect(effect));
             effectCount++;
         }

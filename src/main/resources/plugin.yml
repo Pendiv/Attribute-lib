@@ -4,8 +4,15 @@ version: '$version'
 main: DIV.attributelib.Attributelib
 api-version: '26.1.2'
 load: POSTWORLD
+softdepend: [PlaceholderAPI]
 
 commands:
+  sideboard:
+    description: ステータスサイドバーの表示設定
+    permission: attributelib.sideboard
+    usage: |
+      /sideboard <ジャンル1> [ジャンル2] [ジャンル3] - 選択順に上から表示
+      /sideboard on/off - 表示の切り替え(選択は記憶される)
   attributelib:
     aliases: [alib]
     description: attributelib デバッグコマンド
@@ -24,3 +31,6 @@ permissions:
   attributelib.debug:
     description: attributelib のデバッグコマンドを使用できる
     default: op
+  attributelib.sideboard:
+    description: ステータスサイドバーを表示できる
+    default: true

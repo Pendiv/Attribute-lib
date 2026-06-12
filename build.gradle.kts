@@ -6,10 +6,12 @@ plugins {
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.extendedclip.com/releases/")
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.1.2.build.69-stable")
+    compileOnly("me.clip:placeholderapi:2.12.2")
 
     testImplementation("io.papermc.paper:paper-api:26.1.2.build.69-stable")
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
