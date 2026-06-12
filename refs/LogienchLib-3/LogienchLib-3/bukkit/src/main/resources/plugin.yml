@@ -1,0 +1,23 @@
+name: LogienchLib
+version: '${version}'
+description: "Project-Logiench の便利機能ライブラリです"
+author: "masa355"
+website: "https://github.com/Logiench/LogienchLib"
+
+main: net.logiench.logienchlib.bukkit.LogienchLibPlugin
+api-version: '1.20'
+#depend:
+#  - ProtocolLib
+#  - floodgate
+
+permissions:
+  logienchlib.command:
+    description: LogienchLib commands
+    default: op
+
+commands:
+  logienchlib:
+    description: LogienchLib commands
+    usage: /<command> <type> ...
+    permission: logienchlib.command
+    aliases: [ ll ]

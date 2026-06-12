@@ -1,0 +1,13 @@
+run
+build
+.gradle
+libs
+fileCount.py
+codeCheck.bat
+.kotlin
+.env
+bin
+
+# AI関連
+.agents
+.junie

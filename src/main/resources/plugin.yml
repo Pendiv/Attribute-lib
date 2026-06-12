@@ -1,0 +1,24 @@
+name: attributelib
+version: '$version'
+
+main: DIV.attributelib.Attributelib
+api-version: '26.1.2'
+load: POSTWORLD
+
+commands:
+  attributelib:
+    aliases: [alib]
+    description: attributelib デバッグコマンド
+    permission: attributelib.debug
+    usage: |
+      /alib list - 登録済み属性の一覧
+      /alib dump - 視線の先(いなければ自分)の属性状態
+      /alib setbase <ns:id> <value>
+      /alib add <ns:id> <ADD|MULTIPLY|SET> <value> [durationTicks]
+      /alib clear - デバッグ由来モディファイアの除去
+      /alib smoke - 自己診断(コンソール可)
+
+permissions:
+  attributelib.debug:
+    description: attributelib のデバッグコマンドを使用できる
+    default: op

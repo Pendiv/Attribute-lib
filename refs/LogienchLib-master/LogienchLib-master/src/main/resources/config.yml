@@ -1,0 +1,5 @@
+# プレイヤーが参加した際にスキンのデータを取得します
+# 取得には https://api.geysermc.org/v2/skin/ を使用しています
+# SuperItemStack の統合版カスタムヘッドはこのデータを利用しているため、
+# false にすると、一部メソッドが使用できなくなります (nullになる)
+get-bedrock-player-skin: true

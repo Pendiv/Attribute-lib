@@ -1,0 +1,20 @@
+database:
+  # 使用するストレージの種類。
+  # "sqlite" (ローカルファイル) または "mysql", "mariadb" のリモートDBを指定します。
+  type: "sqlite"
+  # テーブル名の先頭に付ける文字
+  table-prefix: "sl_"
+
+  # SQLiteを使用する場合の設定
+  sqlite:
+    file: "data.db"           #"data.db"
+    # true: 複数スレッドからの読み込みを許可します。これ使用するよりもremoteでDBを作成するべきです。
+    mode-wal: false
+
+  # リモートデータベースを使用する場合の設定 (typeがsqlite以外の場合に参照されます)
+  remote:
+    host: "localhost"         #"localhost"
+    port: 3306                #3306
+    database: "shardlib"
+    username: "root"          #"root"
+    password: ""              #""

@@ -1,0 +1,140 @@
+plugins {
+    id("io.github.goooler.shadow") version "8.1.7"
+    id 'maven-publish'
+    id 'java-library'
+}
+
+group = 'net.logiench'
+version = '2.3.1'
+
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "papermc"
+        url = "https://repo.papermc.io/repository/maven-public/"
+    }
+    maven {
+        name = "floodgate"
+        url = uri "https://repo.opencollab.dev/main/"
+    }
+    maven {
+        name = "nbtApi"
+        url = "https://repo.codemc.io/repository/maven-public/"
+    }
+}
+
+dependencies {
+    // Paper MC
+    compileOnly(
+            group: "io.papermc.paper",
+            name: "paper-api",
+            version: "1.20.6-R0.1-SNAPSHOT"
+    )
+    // Hikari CP
+    api(
+            group: "com.zaxxer",
+            name: "HikariCP",
+            version: "5.0.1"
+    )
+    // Floodgate
+    compileOnly(
+            group: "org.geysermc.floodgate",
+            name: "api",
+            version: "2.2.3-SNAPSHOT"
+    )
+    // ProtocolLib
+    compileOnly(
+            group: "net.dmulloy2",
+            name: "ProtocolLib",
+            version: "5.1.0"
+    )
+    // NBTAPI
+    compileOnly(
+            group: "de.tr7zw",
+            name: "item-nbt-api-plugin",
+            version: "2.13.0"
+    )
+    // LuckPerms
+    compileOnly(
+            group: "net.luckperms",
+            name: "api",
+            version: "5.4"
+    )
+    // LevelDB-API
+    api(
+            group: "com.hivemc.leveldb",
+            name: "leveldb-api",
+            version: "1.0.1"
+    )
+    // LevelDB
+    api(
+            group: "com.hivemc.leveldb",
+            name: "leveldb",
+            version: "1.0.1"
+    )
+    // NBT Utilities
+    api(
+            "group": "org.cloudburstmc",
+            "name": "nbt",
+            "version": "3.0.0.Final"
+    )
+}
+
+def targetJavaVersion = 21
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        options.release.set(targetJavaVersion)
+    }
+}
+
+processResources {
+    def props = [version: version]
+    inputs.properties props
+    filteringCharset 'UTF-8'
+    filesMatching('plugin.yml') {
+        expand props
+    }
+}
+
+shadowJar {
+    archiveClassifier.unset()
+    dependsOn(sourcesJar)
+}
+
+
+publishing {
+    publications {
+        create('gpr', MavenPublication) {
+            // 1. 基本情報を設定
+            groupId = "Logiench"
+            artifactId = "logienchlib"
+            version = project.version
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/Logiench/LogienchLib-v2-2")
+            credentials {
+                // gradle.propertiesから認証情報を読み込む設定
+                username = project.findProperty("GITHUB_ACTOR") ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("GITHUB_TOKEN") ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}

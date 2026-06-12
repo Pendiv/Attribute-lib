@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "attributelib:physical_pierce",
+    "attributelib:magic",
+    "attributelib:true_damage",
+    "attributelib:elemental"
+  ]
+}

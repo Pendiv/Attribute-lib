@@ -1,0 +1,7 @@
+# プロジェクトの除外パス
+/.gradle/
+out
+build
+src/main/java/net/logiench/test
+fileCount.py
+コードステータス.bat
