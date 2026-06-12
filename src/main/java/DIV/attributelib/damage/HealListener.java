@@ -31,6 +31,10 @@ public final class HealListener implements Listener {
         if (!(event.getEntity() instanceof LivingEntity living)) {
             return;
         }
+        // 自然回復は高頻度で発火するため、データの無いエンティティは状態を生成せず素通し
+        if (!engine.hasData(living)) {
+            return;
+        }
         double multiplier = engine.get(living, StandardAttributes.HEAL_MULTIPLIER);
         if (multiplier == 1.0) {
             return;

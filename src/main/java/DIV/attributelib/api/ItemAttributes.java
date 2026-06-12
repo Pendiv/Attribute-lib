@@ -53,12 +53,23 @@ public final class ItemAttributes {
         write(item, modifiers);
     }
 
+    /**
+     * アイテムにカスタム属性モディファイアが1つでもあるか。
+     * meta のクローンを作らない読み取り専用ビューで判定するため、
+     * 装備変更・チャンクロードごとの事前判定(ホットパス)に使える。
+     */
+    public static boolean hasModifiers(ItemStack item) {
+        return item != null && !item.isEmpty()
+                && item.getPersistentDataContainer().has(MODIFIERS_KEY);
+    }
+
     /** アイテムに書かれたカスタム属性モディファイアの一覧(なければ空)。 */
     public static List<ItemModifier> get(ItemStack item) {
-        if (item == null || item.isEmpty() || !item.hasItemMeta()) {
+        if (item == null || item.isEmpty()) {
             return List.of();
         }
-        List<String> lines = item.getItemMeta().getPersistentDataContainer()
+        // getItemMeta()(meta の複製)を避け、読み取り専用ビューから直接読む
+        List<String> lines = item.getPersistentDataContainer()
                 .get(MODIFIERS_KEY, PersistentDataType.LIST.strings());
         if (lines == null || lines.isEmpty()) {
             return List.of();

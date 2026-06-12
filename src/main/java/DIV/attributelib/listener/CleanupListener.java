@@ -1,6 +1,8 @@
 package DIV.attributelib.listener;
 
 import DIV.attributelib.core.AttributeEngine;
+import DIV.attributelib.damage.DamageTypes;
+import io.papermc.paper.event.server.ServerResourcesReloadedEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -23,5 +25,11 @@ public final class CleanupListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemove(EntityRemoveEvent event) {
         engine.evict(event.getEntity().getUniqueId());
+    }
+
+    /** /reload でデータパックのタグが変わりうるため、ダメージタイプ系キャッシュを破棄する。 */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onResourcesReloaded(ServerResourcesReloadedEvent event) {
+        DamageTypes.invalidateCaches();
     }
 }

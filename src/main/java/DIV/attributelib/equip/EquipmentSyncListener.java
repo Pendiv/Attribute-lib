@@ -45,10 +45,10 @@ public final class EquipmentSyncListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEquipmentChanged(EntityEquipmentChangedEvent event) {
         event.getEquipmentChanges().forEach((slot, change) -> {
-            // 旧装備・新装備のどちらにもカスタム属性が無ければエンジンに触れない
-            // (装備変更のたびに全エンティティの属性状態を生成しないための前置き判定)
-            if (ItemAttributes.get(change.oldItem()).isEmpty()
-                    && ItemAttributes.get(change.newItem()).isEmpty()) {
+            // 旧装備・新装備のどちらにもカスタム属性が無ければエンジンに触れない。
+            // 判定は meta を複製しない PDC ビューの has のみ(装備付き mob の湧きでも発火するため)
+            if (!ItemAttributes.hasModifiers(change.oldItem())
+                    && !ItemAttributes.hasModifiers(change.newItem())) {
                 return;
             }
             sync(event.getEntity(), slot, change.newItem());
@@ -69,8 +69,12 @@ public final class EquipmentSyncListener implements Listener {
             return;
         }
         for (EquipmentSlot slot : EquipmentSlot.values()) {
-            ItemStack item = itemOrNull(equipment, slot);
-            if (item != null && !ItemAttributes.get(item).isEmpty()) {
+            // canUseEquipmentSlot で非対応スロットを除外(例外を出させない)
+            if (!living.canUseEquipmentSlot(slot)) {
+                continue;
+            }
+            ItemStack item = equipment.getItem(slot);
+            if (ItemAttributes.hasModifiers(item)) {
                 sync(living, slot, item);
             }
         }
@@ -91,11 +95,4 @@ public final class EquipmentSyncListener implements Listener {
         }
     }
 
-    private static ItemStack itemOrNull(EntityEquipment equipment, EquipmentSlot slot) {
-        try {
-            return equipment.getItem(slot);
-        } catch (IllegalArgumentException e) {
-            return null; // このエンティティが持たないスロット(SADDLE 等)
-        }
-    }
 }

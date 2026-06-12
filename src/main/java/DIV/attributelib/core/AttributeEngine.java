@@ -72,6 +72,21 @@ public final class AttributeEngine {
 
     // ---- エンティティ操作(ファサード/コマンドの入口) ----
 
+    /**
+     * ホットパス用の事前判定: このエンティティが attributelib のデータ
+     * (メモリ状態 or PDC)を一切持たなければ false。
+     * 属性状態を生成せず、NBT のキー存在確認だけで答えるため、
+     * 「無関係なバニラ mob 同士の戦闘」をゼロコストに近く素通しできる。
+     * false のとき全属性は定義のデフォルト値に等しい。
+     */
+    public boolean hasData(LivingEntity entity) {
+        if (entities.containsKey(entity.getUniqueId())) {
+            return true;
+        }
+        var pdc = entity.getPersistentDataContainer();
+        return pdc.has(baseKey) || pdc.has(modifiersKey);
+    }
+
     public double get(LivingEntity entity, AttributeType type) {
         return of(entity).get(type);
     }

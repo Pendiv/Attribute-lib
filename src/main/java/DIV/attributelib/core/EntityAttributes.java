@@ -41,6 +41,15 @@ final class EntityAttributes {
     private final List<Modifier> modifiers = new ArrayList<>();
     private final Map<NamespacedKey, Double> finalCache = new HashMap<>();
 
+    /**
+     * 時限モディファイアの最短期限(gameTime)。Long.MAX_VALUE = 時限なし。
+     * 期限スイープを「この時刻以降の読み取り」だけに限定するためのガードで、
+     * 時限モディファイアの無いエンティティでは読み取りごとの全走査と
+     * getGameTime() 呼び出しがゼロになる。除去でスイープより早くなる分には
+     * 無害(次のスイープが空振りして再計算するだけ)。
+     */
+    private long nearestExpiry = Long.MAX_VALUE;
+
     EntityAttributes(LivingEntity entity, NamespacedKey baseKey, NamespacedKey modifiersKey, Logger logger) {
         this.entity = entity;
         this.baseKey = baseKey;
@@ -103,6 +112,9 @@ final class EntityAttributes {
     ModifierHandle add(Modifier modifier) {
         modifiers.add(modifier);
         finalCache.remove(modifier.attribute());
+        if (modifier.expiresAt() != Modifier.PERMANENT) {
+            nearestExpiry = Math.min(nearestExpiry, modifier.expiresAt());
+        }
         if (modifier.persistent()) {
             saveModifiers();
         }
@@ -132,8 +144,15 @@ final class EntityAttributes {
     }
 
     private void sweepExpired() {
+        if (nearestExpiry == Long.MAX_VALUE) {
+            return; // 時限モディファイアなし: 走査も getGameTime() も不要
+        }
         long now = now();
+        if (now < nearestExpiry) {
+            return;
+        }
         boolean persistentRemoved = false;
+        long next = Long.MAX_VALUE;
         Iterator<Modifier> it = modifiers.iterator();
         while (it.hasNext()) {
             Modifier m = it.next();
@@ -141,8 +160,11 @@ final class EntityAttributes {
                 it.remove();
                 finalCache.remove(m.attribute());
                 persistentRemoved |= m.persistent();
+            } else if (m.expiresAt() != Modifier.PERMANENT) {
+                next = Math.min(next, m.expiresAt());
             }
         }
+        nearestExpiry = next;
         if (persistentRemoved) {
             saveModifiers();
         }
@@ -211,6 +233,9 @@ final class EntityAttributes {
                 if (m.isExpired(now)) {
                     needRewrite = true;
                     continue;
+                }
+                if (m.expiresAt() != Modifier.PERMANENT) {
+                    nearestExpiry = Math.min(nearestExpiry, m.expiresAt());
                 }
                 modifiers.add(m);
             }
