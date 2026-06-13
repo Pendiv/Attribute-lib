@@ -101,6 +101,15 @@ class CalculatorTest {
     }
 
     @Test
+    @DisplayName("null の operation / attribute は add 時点で弾く(読み取り時の遅延 NPE を防ぐ)")
+    void rejectsNullOperationAndAttributeEarly() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new Modifier(KEY, "test:s", null, 1, Modifier.PERMANENT, true));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Modifier(null, "test:s", Operation.ADD, 1, Modifier.PERMANENT, true));
+    }
+
+    @Test
     @DisplayName("期限判定は gameTime >= expiresAt で失効、PERMANENT は失効しない")
     void expiry() {
         Modifier timed = new Modifier(KEY, "test:s", Operation.ADD, 1, 100, true);

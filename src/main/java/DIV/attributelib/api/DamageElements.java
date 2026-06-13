@@ -2,8 +2,10 @@ package DIV.attributelib.api;
 
 import DIV.attributelib.Attributelib;
 import DIV.attributelib.damage.ElementRegistry;
+import net.kyori.adventure.text.Component;
 import org.bukkit.NamespacedKey;
 import org.bukkit.plugin.Plugin;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
 
@@ -65,13 +67,18 @@ public final class DamageElements {
 
     /** 表示名付き登録(lore 表示用。属性ペアは百分率表示になる)。 */
     public static DamageElement register(Plugin plugin, String id,
-                                         net.kyori.adventure.text.Component damageDisplayName,
-                                         net.kyori.adventure.text.Component resistDisplayName) {
+                                         @Nullable Component damageDisplayName,
+                                         @Nullable Component resistDisplayName) {
         return registry().register(plugin, id, damageDisplayName, resistDisplayName);
     }
 
     /** 登録と同時にダメージタイプを紐付けるショートカット。 */
     public static DamageElement register(Plugin plugin, String id, NamespacedKey... damageTypeKeys) {
+        for (NamespacedKey key : damageTypeKeys) {
+            if (key == null) {
+                throw new IllegalArgumentException("damageTypeKeys に null が含まれています");
+            }
+        }
         DamageElement element = registry().register(plugin, id);
         for (NamespacedKey key : damageTypeKeys) {
             registry().mapDamageType(key, element);
@@ -85,7 +92,7 @@ public final class DamageElements {
     }
 
     /** 登録済み元素を ID で引く。未登録なら null。 */
-    public static DamageElement byKey(NamespacedKey key) {
+    public static @Nullable DamageElement byKey(NamespacedKey key) {
         return registry().byKey(key);
     }
 

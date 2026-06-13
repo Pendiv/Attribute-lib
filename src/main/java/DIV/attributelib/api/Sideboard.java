@@ -5,6 +5,7 @@ import DIV.attributelib.sideboard.SideboardManager;
 import net.kyori.adventure.text.Component;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.function.Function;
@@ -34,7 +35,8 @@ public final class Sideboard {
      * @param refreshTicks 更新間隔(tick)。既定 20(1秒)。座標やクールダウンなど
      *                     随時更新したい行は小さく(最短 2 = 0.1秒)。2tick 単位に丸められる
      */
-    public record Line(String id, Component label, Function<Player, Component> value, long refreshTicks) {
+    public record Line(@Nullable String id, Component label,
+                       Function<Player, Component> value, long refreshTicks) {
 
         public Line {
             if (refreshTicks <= 0) {
@@ -45,7 +47,7 @@ public final class Sideboard {
         }
 
         /** 既定の更新間隔(1秒)の行。 */
-        public Line(String id, Component label, Function<Player, Component> value) {
+        public Line(@Nullable String id, Component label, Function<Player, Component> value) {
             this(id, label, value, 20);
         }
     }
@@ -111,7 +113,7 @@ public final class Sideboard {
     }
 
     /** ID 付きの行。 */
-    public static Line line(String id, Component label, Function<Player, Component> value) {
+    public static Line line(@Nullable String id, Component label, Function<Player, Component> value) {
         return new Line(id, label, value);
     }
 
@@ -124,7 +126,8 @@ public final class Sideboard {
      *         Component.text("スキルCT", NamedTextColor.YELLOW), p -> ..., 2));
      * }</pre>
      */
-    public static Line line(String id, Component label, Function<Player, Component> value, long refreshTicks) {
+    public static Line line(@Nullable String id, Component label, Function<Player, Component> value,
+                            long refreshTicks) {
         return new Line(id, label, value, refreshTicks);
     }
 
@@ -134,7 +137,7 @@ public final class Sideboard {
     }
 
     /** ID 付きの属性行。 */
-    public static Line attributeLine(String id, Component label, AttributeType type) {
+    public static Line attributeLine(@Nullable String id, Component label, AttributeType type) {
         return new Line(id, label, player -> Component.text(
                 SideboardManager.formatAttribute(type, Attributes.get(player, type))));
     }

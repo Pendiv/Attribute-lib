@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -303,7 +304,14 @@ public final class AttributeEngine {
         return pdc.has(baseKey) || pdc.has(modifiersKey);
     }
 
+    /** 公開エントリの引数を境界で検証する(深い場所での生 NPE を防ぐ)。 */
+    private static void require(LivingEntity entity, AttributeType type) {
+        Objects.requireNonNull(entity, "entity が null です");
+        Objects.requireNonNull(type, "type が null です");
+    }
+
     public double get(LivingEntity entity, AttributeType type) {
+        require(entity, type);
         Attribute attribute = bridged.get(type.key());
         if (attribute != null) {
             // ブリッジの最終値の真実はバニラ側(他プラグインのモディファイアも合成済み)
@@ -314,6 +322,7 @@ public final class AttributeEngine {
     }
 
     public double getBase(LivingEntity entity, AttributeType type) {
+        require(entity, type);
         Attribute attribute = bridged.get(type.key());
         if (attribute != null && !of(entity).hasExplicitBase(type)) {
             AttributeInstance instance = entity.getAttribute(attribute);
@@ -323,10 +332,12 @@ public final class AttributeEngine {
     }
 
     public void setBase(LivingEntity entity, AttributeType type, double value) {
+        require(entity, type);
         of(entity).setBase(type, value);
     }
 
     public void resetBase(LivingEntity entity, AttributeType type) {
+        require(entity, type);
         of(entity).resetBase(type);
     }
 
@@ -345,6 +356,8 @@ public final class AttributeEngine {
     public ModifierHandle add(LivingEntity entity, AttributeType type, String sourceId,
                               Operation operation, double value, long durationTicks, boolean persistent,
                               NamespacedKey condition) {
+        require(entity, type);
+        // operation / sourceId / value は Modifier コンストラクタが境界で検証する
         EntityAttributes state = of(entity);
         long expiresAt = durationTicks <= 0
                 ? Modifier.PERMANENT
@@ -363,6 +376,10 @@ public final class AttributeEngine {
     }
 
     public void removeBySource(LivingEntity entity, String sourceId) {
+        Objects.requireNonNull(entity, "entity が null です");
+        if (sourceId == null) {
+            return; // 何も一致しない = no-op(無害)
+        }
         of(entity).removeBySource(sourceId);
     }
 

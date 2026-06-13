@@ -2,6 +2,7 @@ package DIV.attributelib.api;
 
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.EquipmentSlotGroup;
+import org.jspecify.annotations.Nullable;
 
 /**
  * アイテムに書かれたカスタム属性モディファイア1件。
@@ -18,7 +19,7 @@ public record ItemModifier(
         Operation operation,
         double value,
         EquipmentSlotGroup slot,
-        NamespacedKey condition
+        @Nullable NamespacedKey condition
 ) {
     /** 無条件モディファイア。 */
     public ItemModifier(NamespacedKey attribute, Operation operation, double value, EquipmentSlotGroup slot) {

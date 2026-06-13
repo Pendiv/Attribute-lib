@@ -2,6 +2,7 @@ package DIV.attributelib.core;
 
 import DIV.attributelib.api.Operation;
 import org.bukkit.NamespacedKey;
+import org.jspecify.annotations.Nullable;
 
 /**
  * 属性モディファイア1件(内部表現)。
@@ -26,7 +27,7 @@ public record Modifier(
         double value,
         long expiresAt,
         boolean persistent,
-        NamespacedKey condition
+        @Nullable NamespacedKey condition
 ) {
     /** {@link #expiresAt} に入れると無期限になる値。 */
     public static final long PERMANENT = -1L;
@@ -38,6 +39,13 @@ public record Modifier(
     }
 
     public Modifier {
+        if (attribute == null) {
+            throw new IllegalArgumentException("attribute が null です");
+        }
+        if (operation == null) {
+            // ここで弾かないと Calculator の switch まで生き延びて読み取り時に NPE になる(遅延爆発)
+            throw new IllegalArgumentException("operation が null です");
+        }
         if (sourceId == null || sourceId.isEmpty()) {
             throw new IllegalArgumentException("sourceId が空です");
         }

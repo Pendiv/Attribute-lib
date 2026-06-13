@@ -48,6 +48,7 @@ public final class ItemAttributes {
     /** カスタム属性モディファイアをアイテムに追加する。 */
     public static void add(ItemStack item, AttributeType type, Operation operation,
                            double value, EquipmentSlotGroup slot) {
+        java.util.Objects.requireNonNull(type, "type が null です");
         List<ItemModifier> modifiers = new ArrayList<>(get(item));
         modifiers.add(new ItemModifier(type.key(), operation, value, slot));
         write(item, modifiers);
@@ -56,6 +57,8 @@ public final class ItemAttributes {
     /** 条件付きのカスタム属性モディファイア。装備中かつ条件成立中のみ効く(lore に条件が表示される)。 */
     public static void add(ItemStack item, AttributeType type, Operation operation,
                            double value, EquipmentSlotGroup slot, Condition condition) {
+        java.util.Objects.requireNonNull(type, "type が null です");
+        java.util.Objects.requireNonNull(condition, "condition が null です");
         List<ItemModifier> modifiers = new ArrayList<>(get(item));
         modifiers.add(new ItemModifier(type.key(), operation, value, slot, condition.key()));
         write(item, modifiers);
@@ -96,6 +99,7 @@ public final class ItemAttributes {
 
     /** 指定属性のカスタムモディファイアをアイテムから取り除く。 */
     public static void remove(ItemStack item, AttributeType type) {
+        java.util.Objects.requireNonNull(type, "type が null です");
         List<ItemModifier> modifiers = new ArrayList<>(get(item));
         if (modifiers.removeIf(m -> m.attribute().equals(type.key()))) {
             write(item, modifiers);
@@ -108,6 +112,9 @@ public final class ItemAttributes {
     }
 
     private static void write(ItemStack item, List<ItemModifier> modifiers) {
+        if (item == null || item.isEmpty()) {
+            throw new IllegalArgumentException("item が null または空です");
+        }
         item.editMeta(meta -> {
             // 1. PDC へモディファイア本体を保存
             if (modifiers.isEmpty()) {

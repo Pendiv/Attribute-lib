@@ -8,6 +8,7 @@ import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.jspecify.annotations.Nullable;
 
 import java.util.logging.Logger;
 
@@ -32,17 +33,17 @@ public final class DamageLib {
     }
 
     /** 物理貫通ダメージ(attributelib:physical_pierce)。バニラ防具は素通り、物理軽減%は効く。 */
-    public static void pierce(LivingEntity attacker, LivingEntity victim, double amount) {
+    public static void pierce(@Nullable LivingEntity attacker, LivingEntity victim, double amount) {
         deal(DamageTypes.PHYSICAL_PIERCE, DamageType.MOB_ATTACK, null, attacker, victim, amount);
     }
 
     /** 魔法ダメージ(attributelib:magic)。 */
-    public static void magic(LivingEntity attacker, LivingEntity victim, double amount) {
+    public static void magic(@Nullable LivingEntity attacker, LivingEntity victim, double amount) {
         deal(DamageTypes.MAGIC, DamageType.MAGIC, null, attacker, victim, amount);
     }
 
     /** 確定ダメージ(attributelib:true_damage)。全防御と無敵フレームを素通りし、入力値がそのまま通る。 */
-    public static void trueDamage(LivingEntity attacker, LivingEntity victim, double amount) {
+    public static void trueDamage(@Nullable LivingEntity attacker, LivingEntity victim, double amount) {
         deal(DamageTypes.TRUE_DAMAGE, DamageType.MAGIC, null, attacker, victim, amount);
     }
 
@@ -73,12 +74,18 @@ public final class DamageLib {
     }
 
     /** ダメージソースの元素判定。無属性なら null。 */
-    public static DamageElement elementOf(DamageSource source) {
-        return Attributelib.instance().elements().elementOf(source.getDamageType().getKey());
+    public static @Nullable DamageElement elementOf(DamageSource source) {
+        Attributelib plugin = Attributelib.instance();
+        if (plugin == null) {
+            throw new IllegalStateException(
+                    "attributelib がまだロードされていません。plugin.yml の depend に attributelib を追加してください");
+        }
+        return plugin.elements().elementOf(source.getDamageType().getKey());
     }
 
     private static void deal(NamespacedKey typeKey, DamageType fallback, DamageElement declaredElement,
                              LivingEntity attacker, LivingEntity victim, double amount) {
+        java.util.Objects.requireNonNull(victim, "victim が null です");
         if (amount <= 0) {
             return;
         }

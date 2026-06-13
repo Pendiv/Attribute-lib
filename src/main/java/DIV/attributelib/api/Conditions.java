@@ -11,6 +11,7 @@ import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.potion.PotionEffectType;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -82,13 +83,13 @@ public final class Conditions {
      * 条件を登録する。述語はメインスレッドで(ダメージ計算などの最中に)呼ばれるため、
      * 軽い判定だけを書くこと。
      */
-    public static Condition register(Plugin plugin, String id, Component displayName,
+    public static Condition register(Plugin plugin, String id, @Nullable Component displayName,
                                      Predicate<LivingEntity> test) {
         return registry().register(plugin, id, displayName, test);
     }
 
     /** 登録済み条件をキーで引く。未登録なら null。 */
-    public static Condition byKey(NamespacedKey key) {
+    public static @Nullable Condition byKey(NamespacedKey key) {
         return registry().byKey(key);
     }
 
@@ -110,6 +111,7 @@ public final class Conditions {
      * }</pre>
      */
     public static Condition hasEffect(PotionEffectType effect) {
+        java.util.Objects.requireNonNull(effect, "effect が null です");
         Condition condition = byKey(effectConditionKey(effect));
         if (condition == null) {
             throw new IllegalStateException("エフェクト条件が未登録です(attributelib の onEnable 前?): " + effect.getKey());

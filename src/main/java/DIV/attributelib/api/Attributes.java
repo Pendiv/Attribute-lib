@@ -4,6 +4,9 @@ import DIV.attributelib.Attributelib;
 import DIV.attributelib.core.AttributeEngine;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.Plugin;
+import org.jspecify.annotations.Nullable;
+
+import java.util.Objects;
 
 /**
  * attributelib のメイン API。利用側プラグインの操作はすべて1行で完結する。
@@ -71,7 +74,8 @@ public final class Attributes {
      * @param percentDisplay true なら値を百分率で表示(確率・割合系の属性向け。0.25 → +25%)
      */
     public static AttributeType register(Plugin plugin, String id, double defaultValue, double min, double max,
-                                         net.kyori.adventure.text.Component displayName, boolean percentDisplay) {
+                                         net.kyori.adventure.text.@Nullable Component displayName,
+                                         boolean percentDisplay) {
         return engine().register(plugin, id, defaultValue, min, max, displayName, percentDisplay);
     }
 
@@ -138,6 +142,7 @@ public final class Attributes {
     /** 条件付きの無期限永続モディファイア。例: 夜間のみ攻撃力+3。 */
     public static ModifierHandle add(LivingEntity entity, AttributeType type,
                                      String sourceId, Operation operation, double value, Condition condition) {
+        Objects.requireNonNull(condition, "condition が null です");
         return engine().add(entity, type, sourceId, operation, value, 0, true, condition.key());
     }
 
@@ -145,6 +150,7 @@ public final class Attributes {
     public static ModifierHandle add(LivingEntity entity, AttributeType type,
                                      String sourceId, Operation operation, double value,
                                      long durationTicks, Condition condition) {
+        Objects.requireNonNull(condition, "condition が null です");
         requirePositiveDuration(durationTicks);
         return engine().add(entity, type, sourceId, operation, value, durationTicks, true, condition.key());
     }
@@ -153,6 +159,7 @@ public final class Attributes {
     public static ModifierHandle addTransient(LivingEntity entity, AttributeType type,
                                               String sourceId, Operation operation, double value,
                                               Condition condition) {
+        Objects.requireNonNull(condition, "condition が null です");
         return engine().add(entity, type, sourceId, operation, value, 0, false, condition.key());
     }
 
@@ -160,6 +167,7 @@ public final class Attributes {
     public static ModifierHandle addTransient(LivingEntity entity, AttributeType type,
                                               String sourceId, Operation operation, double value,
                                               long durationTicks, Condition condition) {
+        Objects.requireNonNull(condition, "condition が null です");
         requirePositiveDuration(durationTicks);
         return engine().add(entity, type, sourceId, operation, value, durationTicks, false, condition.key());
     }

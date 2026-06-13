@@ -38,6 +38,8 @@ public record AttributeType(
             throw new IllegalArgumentException(
                     "defaultValue(" + defaultValue + ") が範囲 [" + min + ", " + max + "] の外です");
         }
+        // displayName コンポーネントは非 null(下で正規化)。内部の register 経由では
+        // null が渡され得るため(@Nullable な引数を許す)、ここで prettify に正規化する。
         if (displayName == null) {
             displayName = prettify(key);
         }
@@ -45,7 +47,7 @@ public record AttributeType(
 
     /** 表示名は ID から自動生成("dodge_chance" → "Dodge Chance")、％表示なし。 */
     public AttributeType(NamespacedKey key, double defaultValue, double min, double max) {
-        this(key, defaultValue, min, max, null, false);
+        this(key, defaultValue, min, max, prettify(key), false);
     }
 
     /** 値をこの属性の [min, max] に収める。 */
