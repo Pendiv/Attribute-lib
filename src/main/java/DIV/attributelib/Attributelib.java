@@ -44,12 +44,15 @@ public final class Attributelib extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        saveDefaultConfig();
+        raiseVanillaCaps();
+
         StandardAttributes.init(this, engine, elements);
         engine.registerBridges();
         DIV.attributelib.api.Conditions.initStandard(this);
 
         getServer().getPluginManager().registerEvents(new CleanupListener(engine), this);
-        getServer().getPluginManager().registerEvents(new DamageListener(engine, elements), this);
+        getServer().getPluginManager().registerEvents(new DamageListener(engine, elements, armorOverflow()), this);
         getServer().getPluginManager().registerEvents(new HealListener(engine), this);
         getServer().getPluginManager().registerEvents(new EquipmentSyncListener(engine), this);
 
@@ -85,6 +88,26 @@ public final class Attributelib extends JavaPlugin {
         }
         pluginCommand.setExecutor(command);
         pluginCommand.setTabCompleter(command);
+    }
+
+    /** config の caps: セクションに従ってバニラ属性のハード上限を解放する。 */
+    private void raiseVanillaCaps() {
+        var section = getConfig().getConfigurationSection("caps");
+        if (section == null) {
+            return;
+        }
+        DIV.attributelib.core.VanillaCaps.raiseFromConfig(this, section.getValues(false));
+    }
+
+    /** config の armor-overflow: セクションから上限超過軽減設定を組む(無効なら null)。 */
+    private DIV.attributelib.damage.DamagePipeline.ArmorOverflow armorOverflow() {
+        if (!getConfig().getBoolean("armor-overflow.enabled", true)) {
+            return null;
+        }
+        double threshold = getConfig().getDouble("armor-overflow.threshold", 100);
+        double rate = getConfig().getDouble("armor-overflow.reduction-per-point", 0.008);
+        double max = getConfig().getDouble("armor-overflow.max-reduction", 0.95);
+        return new DIV.attributelib.damage.DamagePipeline.ArmorOverflow(threshold, rate, max);
     }
 
     @Override

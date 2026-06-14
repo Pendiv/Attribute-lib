@@ -1,5 +1,6 @@
 package DIV.attributelib.damage;
 
+import DIV.attributelib.damage.DamagePipeline.ArmorOverflow;
 import DIV.attributelib.damage.DamagePipeline.AttackerStats;
 import DIV.attributelib.damage.DamagePipeline.Result;
 import DIV.attributelib.damage.DamagePipeline.VictimStats;
@@ -193,6 +194,77 @@ class DamagePipelineTest {
                         "pen=" + pen + " armor=" + armor + " final=" + actualFinal + " が裸の4を超過");
             }
         }
+    }
+
+    // ─── 上限超過防御の軽減化(ArmorOverflow) ───
+
+    private static final ArmorOverflow OVERFLOW = new ArmorOverflow(100, 0.008, 0.95);
+
+    @Test
+    @DisplayName("overflowResist: threshold 以下は 0、超過分は率で増え、maxReduction で頭打ち")
+    void overflowResistFormula() {
+        assertEquals(0, DamagePipeline.overflowResist(100, OVERFLOW), 1e-9);
+        assertEquals(0, DamagePipeline.overflowResist(50, OVERFLOW), 1e-9);
+        // (200-100)×0.008 = 0.8
+        assertEquals(0.8, DamagePipeline.overflowResist(200, OVERFLOW), 1e-9);
+        // (1000-100)×0.008 = 7.2 → 0.95 で頭打ち
+        assertEquals(0.95, DamagePipeline.overflowResist(1000, OVERFLOW), 1e-9);
+        // null は常に 0
+        assertEquals(0, DamagePipeline.overflowResist(9999, null), 1e-9);
+    }
+
+    @Test
+    @DisplayName("ArmorOverflow: 異常値は健全な範囲に正規化される")
+    void overflowRecordNormalizes() {
+        ArmorOverflow o = new ArmorOverflow(-5, -1, 2.0);
+        assertEquals(0, o.threshold());
+        assertEquals(0, o.reductionPerPoint());
+        assertEquals(1.0, o.maxReduction());
+    }
+
+    @Test
+    @DisplayName("上限超過軽減: バニラ防具後の最終値にさらに ×(1-超過軽減) が乗る")
+    void overflowReducesAfterArmor() {
+        // armor 200, toughness 0。実効防御 200 → 超過軽減 0.8
+        double armor = 200, toughness = 0;
+        Result result = DamagePipeline.compute(NEUTRAL_ATTACKER, NEUTRAL_VICTIM,
+                false, 10, true, armor, toughness, OVERFLOW, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        double actualFinal = newBase * DamagePipeline.armorFactor(newBase, armor, toughness);
+        // 目標 = 裸の防具式(80%軽減)を通した値 × (1-0.8)
+        double vanillaFinal = 10 * DamagePipeline.armorFactor(10, armor, toughness);
+        assertEquals(vanillaFinal * 0.2, actualFinal, 1e-6);
+    }
+
+    @Test
+    @DisplayName("上限超過軽減: overflow=null なら従来通り(防具のみ)")
+    void overflowNullIsVanillaOnly() {
+        Result with = DamagePipeline.compute(NEUTRAL_ATTACKER, NEUTRAL_VICTIM,
+                false, 10, true, 200, 0, null, () -> 0.99);
+        // 攻撃側中立・貫通なし・overflow なし → 倍率は素通し(1.0)
+        assertEquals(1.0, with.multiplier(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("上限超過軽減: 貫通で実効防御が threshold を割れば超過軽減も消える")
+    void penetrationCancelsOverflow() {
+        // armor 200 だが貫通 60% → 実効防御 80 < threshold(100) → 超過軽減 0
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0.60, 0, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 200, 0, OVERFLOW, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        double actualFinal = newBase * DamagePipeline.armorFactor(newBase, 200, 0);
+        // 実効防御80のバニラ防具式だけを通した値に着地(追加軽減なし)
+        double targetFinal = 10 * DamagePipeline.armorFactor(10, 80, 0);
+        assertEquals(targetFinal, actualFinal, 1e-6);
+    }
+
+    @Test
+    @DisplayName("上限超過軽減: bypasses_armor のダメージには乗らない")
+    void overflowOnlyWhenArmorApplied() {
+        Result bypassed = DamagePipeline.compute(NEUTRAL_ATTACKER, NEUTRAL_VICTIM,
+                false, 10, false, 200, 0, OVERFLOW, () -> 0.99);
+        assertEquals(1.0, bypassed.multiplier(), 1e-9);
     }
 
     @Test

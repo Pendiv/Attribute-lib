@@ -1,5 +1,7 @@
 package DIV.attributelib.damage;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.function.DoubleSupplier;
 
 /**
@@ -48,7 +50,39 @@ public final class DamagePipeline {
         public static final Result NEUTRAL = new Result(1.0, false);
     }
 
+    /**
+     * バニラ防具の上限超過分をダメージ軽減に変換する設定。
+     *
+     * <p>バニラ防具式は防御 100(armor/5 枝が 20 に到達)で軽減 80% に頭打ちし、それ以上の
+     * 防御値は無意味になる。その「死に値」を乗算軽減として活かすための変換。
+     * 変換は {@code (実効防御 − threshold) × reductionPerPoint} を {@code maxReduction} で頭打ちし、
+     * 防具計算後のダメージにさらに {@code ×(1 − その軽減)} を掛ける形で適用される。</p>
+     *
+     * @param threshold        この実効防御値を超えた分が軽減に変換される(バニラが 80% に達する点 = 100 が既定)
+     * @param reductionPerPoint 超過防御 1 ポイントあたりの追加軽減(0.008 = バニラ armor/5 枝と同率)
+     * @param maxReduction     追加軽減の上限([0,1)。完全無敵化を防ぐ)
+     */
+    public record ArmorOverflow(double threshold, double reductionPerPoint, double maxReduction) {
+        public ArmorOverflow {
+            threshold = Math.max(0, threshold);
+            reductionPerPoint = Math.max(0, reductionPerPoint);
+            maxReduction = Math.clamp(maxReduction, 0, 1);
+        }
+    }
+
     private DamagePipeline() {
+    }
+
+    /**
+     * 上限超過防御による追加軽減割合(0..maxReduction)。{@code overflow} が null か
+     * 実効防御が threshold 以下なら 0。
+     */
+    public static double overflowResist(double effectiveArmor, @Nullable ArmorOverflow overflow) {
+        if (overflow == null || effectiveArmor <= overflow.threshold()) {
+            return 0;
+        }
+        return Math.min(overflow.maxReduction(),
+                (effectiveArmor - overflow.threshold()) * overflow.reductionPerPoint());
     }
 
     /**
@@ -67,6 +101,23 @@ public final class DamagePipeline {
                                  boolean armorApplied,
                                  double armor,
                                  double toughness,
+                                 DoubleSupplier random) {
+        return compute(attacker, victim, vanillaCritical, baseDamage,
+                armorApplied, armor, toughness, null, random);
+    }
+
+    /**
+     * 上限超過防御の軽減化({@link ArmorOverflow})を加味する版。{@code overflow} が null なら
+     * 上の8引数版と同じ挙動。貫通の逆算と同じ二分法に統合されるため、両者は無矛盾に合成される。
+     */
+    public static Result compute(AttackerStats attacker,
+                                 VictimStats victim,
+                                 boolean vanillaCritical,
+                                 double baseDamage,
+                                 boolean armorApplied,
+                                 double armor,
+                                 double toughness,
+                                 @Nullable ArmorOverflow overflow,
                                  DoubleSupplier random) {
         double multiplier = 1.0;
 
@@ -93,20 +144,25 @@ public final class DamagePipeline {
         multiplier *= victim.damageTaken();
         multiplier = Math.max(0, multiplier);
 
-        // 4. 部分貫通(企画書 §8-1)。最後に適用するのは、貫通の逆算が
+        // 4. 防具(部分貫通 + 上限超過分の軽減化)。最後に適用するのは、逆算が
         //    「他の全倍率を掛けた後のダメージ量」に依存するため。
         //    バニラ防具式はダメージ量に対して非線形なので、単純な軽減率の比を
         //    掛けるとバニラ側が増えた base で防具を再評価して軽減が二重に弱まり、
         //    装備持ちの方がダメージを受ける逆転が起きる(実機で確認済みのバグ)。
-        //    正しくは「新しい base にバニラ防具式を通した結果が、貫通後の armor で
-        //    計算した目標値に一致する」base を逆算する。
-        if (attacker != null && armorApplied && armor > 0 && multiplier > 0
-                && (attacker.armorPenetration() > 0 || attacker.armorPenetrationFlat() > 0)) {
-            double scaled = baseDamage * multiplier;
-            double effectiveArmor = Math.max(0,
-                    armor * (1 - attacker.armorPenetration()) - attacker.armorPenetrationFlat());
-            double targetFinal = scaled * armorFactor(scaled, effectiveArmor, toughness);
-            multiplier = solveBaseForFinal(targetFinal, armor, toughness) / baseDamage;
+        //    正しくは「新しい base にバニラ防具式を通した結果が、貫通後の実効防御で
+        //    計算した目標値(+ 超過分の追加軽減)に一致する」base を逆算する。
+        //    貫通と上限超過軽減はどちらも実効防御に基づくので二分法に統合できる
+        //    (貫通で実効防御が threshold を割れば超過軽減も自動的に消える)。
+        if (armorApplied && armor > 0 && baseDamage > 0 && multiplier > 0) {
+            double pen = attacker != null ? attacker.armorPenetration() : 0;
+            double penFlat = attacker != null ? attacker.armorPenetrationFlat() : 0;
+            double effectiveArmor = Math.max(0, armor * (1 - pen) - penFlat);
+            double oResist = overflowResist(effectiveArmor, overflow);
+            if (pen > 0 || penFlat > 0 || oResist > 0) {
+                double scaled = baseDamage * multiplier;
+                double targetFinal = scaled * armorFactor(scaled, effectiveArmor, toughness) * (1 - oResist);
+                multiplier = solveBaseForFinal(targetFinal, armor, toughness) / baseDamage;
+            }
         }
 
         return new Result(multiplier, critical);

@@ -42,10 +42,14 @@ public final class DamageListener implements Listener {
 
     private final AttributeEngine engine;
     private final ElementRegistry elements;
+    /** 防御上限超過分の軽減化設定(無効なら null)。 */
+    private final DamagePipeline.ArmorOverflow overflow;
 
-    public DamageListener(AttributeEngine engine, ElementRegistry elements) {
+    public DamageListener(AttributeEngine engine, ElementRegistry elements,
+                          DamagePipeline.ArmorOverflow overflow) {
         this.engine = engine;
         this.elements = elements;
+        this.overflow = overflow;
     }
 
     /** {@link DIV.attributelib.api.DamageLib#wasCritical} の実体。 */
@@ -121,10 +125,13 @@ public final class DamageListener implements Listener {
                         engine.get(victim, StandardAttributes.CRIT_RESIST),
                         engine.get(victim, StandardAttributes.DAMAGE_TAKEN));
 
-        // 防具値とタグ照会は貫通が有効な時だけ必要(compute は armorApplied=false なら参照しない)
+        // 防具値の照会は貫通か上限超過軽減が効きうる時だけ必要(compute は armorApplied=false なら参照しない)。
+        // 上限超過軽減は被害者の防御に基づくため、被害者が attributelib データを持つ時のみ評価する
+        // (高防御の被害者は通常ブリッジ経由でデータを持つ。ホットパスの無駄な属性照会を避ける)。
         boolean penActive = attackerStats != null
                 && (attackerStats.armorPenetration() > 0 || attackerStats.armorPenetrationFlat() > 0);
-        boolean armorApplied = penActive && !DamageTypes.bypassesArmor(source);
+        boolean overflowActive = overflow != null && victimHasData;
+        boolean armorApplied = (penActive || overflowActive) && !DamageTypes.bypassesArmor(source);
         double armor = 0;
         double toughness = 0;
         if (armorApplied) {
@@ -142,6 +149,7 @@ public final class DamageListener implements Listener {
                 armorApplied,
                 armor,
                 toughness,
+                overflowActive ? overflow : null,
                 ThreadLocalRandom.current()::nextDouble);
 
         if (result.critical()) {
