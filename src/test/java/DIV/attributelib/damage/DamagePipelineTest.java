@@ -268,6 +268,113 @@ class DamagePipelineTest {
     }
 
     @Test
+    @DisplayName("上限超過軽減: 実数値貫通で実効防御が threshold を割れば超過軽減も消える")
+    void flatPenetrationCancelsOverflow() {
+        // armor 200 だが貫通値120 → 実効防御 80 < threshold(100) → 超過軽減 0
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0, 120, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 200, 0, OVERFLOW, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        double actualFinal = newBase * DamagePipeline.armorFactor(newBase, 200, 0);
+        // 実効防御80のバニラ防具式だけを通した値に着地(超過軽減なし)
+        double targetFinal = 10 * DamagePipeline.armorFactor(10, 80, 0);
+        assertEquals(targetFinal, actualFinal, 1e-6);
+    }
+
+    @Test
+    @DisplayName("上限超過軽減: 実数値貫通は超過軽減を部分的に削る(実効防御150 → 軽減0.4)")
+    void flatPenetrationPartiallyCutsOverflow() {
+        // armor 200, 貫通値50 → 実効防御 150 → 超過軽減 (150-100)×0.008 = 0.4
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0, 50, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 200, 0, OVERFLOW, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        double actualFinal = newBase * DamagePipeline.armorFactor(newBase, 200, 0);
+        // 実効防御150のバニラ防具式 × (1 - 0.4)
+        double targetFinal = 10 * DamagePipeline.armorFactor(10, 150, 0) * (1 - 0.4);
+        assertEquals(targetFinal, actualFinal, 1e-6);
+    }
+
+    @Test
+    @DisplayName("貫通(率+実数)は防具軽減と超過軽減を同時に削り、裸を超えない(タフネス込み)")
+    void penetrationCutsBothFactorAndOverflowWithToughness() {
+        // armor 400, toughness 8, 率0.25 + 実数20 → 実効防御 max(0, 400×0.75 - 20) = 280
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0.25, 20, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 400, 8, OVERFLOW, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        double actualFinal = newBase * DamagePipeline.armorFactor(newBase, 400, 8);
+        // 単一の実効防御280が防具式と超過軽減の両方に流れる
+        double oResist = DamagePipeline.overflowResist(280, OVERFLOW); // (280-100)×0.008=1.44 → 0.95 で頭打ち
+        double targetFinal = 10 * DamagePipeline.armorFactor(10, 280, 8) * (1 - oResist);
+        assertEquals(targetFinal, actualFinal, 1e-6);
+        assertTrue(actualFinal <= 10 + 1e-9, "裸の10を超過: " + actualFinal);
+    }
+
+    @Test
+    @DisplayName("逆算ソルバー: 大きな目標値でも往復が一致する(flat/会心積み上げ対策)")
+    void solverRoundTripLargeTarget() {
+        for (double target : new double[]{100, 1000, 5000}) {
+            for (double armor : new double[]{20, 100, 500}) {
+                double solved = DamagePipeline.solveBaseForFinal(target, armor, 8);
+                assertEquals(target, solved * DamagePipeline.armorFactor(solved, armor, 8), 1e-6,
+                        "target=" + target + " armor=" + armor);
+            }
+        }
+    }
+
+    // ─── 実数値加算(flatBonus)とカテゴリ倍率(射撃・爆発) ───
+
+    @Test
+    @DisplayName("実数値加算: flat は base に上乗せされる((base+flat)/base 倍)")
+    void flatBonusAddsToBase() {
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0, 0, 1, 50, 1);
+        // base=10, flat=50 → 最終 base は 60 相当 = 倍率 6.0(防具0なので逆算は走らない)
+        Result result = compute(attacker, NEUTRAL_VICTIM);
+        assertEquals(6.0, result.multiplier(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("実数値加算: flat は会心・元素%で増幅される(base 加算なので後段が乗る)")
+    void flatBonusIsAmplifiedByCritAndElement() {
+        // flat=50 → base 60 相当、元素1.5、会心2.0 → 6 × 1.5 × 2.0 = 18
+        AttackerStats attacker = new AttackerStats(1.5, 1.0, 2.0, 0, 0, 1, 50, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 0, 0, () -> 0.0);
+        assertTrue(result.critical());
+        assertEquals(6.0 * 1.5 * 2.0, result.multiplier(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("カテゴリ倍率: 元素倍率と直交して掛かる(射撃×物理など)")
+    void categoryMultiplierIsOrthogonal() {
+        // 元素1.5 × カテゴリ2.0 = 3.0
+        AttackerStats attacker = new AttackerStats(1.5, 0, 1.5, 0, 0, 1, 0, 2.0);
+        Result result = compute(attacker, NEUTRAL_VICTIM);
+        assertEquals(1.5 * 2.0, result.multiplier(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("6引数コンストラクタは flat=0・カテゴリ倍率=1 として既存挙動を保つ")
+    void legacyConstructorIsNeutralFlat() {
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 0, 0, 1);
+        assertEquals(0, attacker.flatBonus());
+        assertEquals(1, attacker.categoryMultiplier());
+        assertEquals(1.0, compute(attacker, NEUTRAL_VICTIM).multiplier(), 1e-9);
+    }
+
+    @Test
+    @DisplayName("実数値加算 + 貫通100%: flat 込みの量(60)が裸での最終値に着地する")
+    void flatBonusWithFullPenetration() {
+        AttackerStats attacker = new AttackerStats(1, 0, 1.5, 1.0, 0, 1, 50, 1);
+        Result result = DamagePipeline.compute(attacker, NEUTRAL_VICTIM,
+                false, 10, true, 20, 0, () -> 0.99);
+        double newBase = 10 * result.multiplier();
+        // base10 + flat50 = 60 を裸で受けた最終値にピッタリ着地(防具で増幅されない)
+        assertEquals(60.0, newBase * DamagePipeline.armorFactor(newBase, 20, 0), 1e-6);
+    }
+
+    @Test
     @DisplayName("全段合成: 倍率を全て掛けた後の量に対して貫通が逆算される")
     void fullComposition() {
         AttackerStats attacker = new AttackerStats(1.5, 1.0, 2.0, 1.0, 0, 1.2);

@@ -19,7 +19,8 @@ import java.util.logging.Logger;
  * DamageLib.magic(attacker, victim, 8);                      // 魔法
  * DamageLib.pierce(attacker, victim, 5);                     // 物理貫通
  * DamageLib.trueDamage(attacker, victim, 3);                 // 確定(入力値=与ダメ)
- * DamageLib.deal(DamageElements.FIRE, attacker, victim, 6);  // 元素を宣誓して撃つ
+ * DamageLib.deal(DamageElements.FIRE, attacker, victim, 6);  // 元素を宣誓(防具を尊重)
+ * DamageLib.dealPiercing(DamageElements.FIRE, attacker, victim, 6); // 宣誓 + この一撃だけ防具貫通
  * }</pre>
  *
  * <p>ここで与えたダメージも被害者側の {@link EntityDamageEvent} を通常通り通過するため、
@@ -49,8 +50,12 @@ public final class DamageLib {
 
     /**
      * 元素を「宣誓」してダメージを与える。専用のデータパックダメージタイプが無くても、
-     * このダメージは指定元素として扱われ、{@code <id>_damage} / {@code <id>_resist} が効く。
-     * キャリアは attributelib:elemental(防具素通り、message_id は magic)。
+     * このダメージは指定元素として扱われ、{@code <id>_damage} / {@code <id>_resist} /
+     * {@code <id>_damage_flat} が効く。キャリアは attributelib:elemental。
+     *
+     * <p>バニラ防具を<b>尊重</b>する — 防具で軽減され、攻撃側の {@code armor_penetration} /
+     * {@code armor_penetration_flat}(と上限超過軽減)が効く。防具を完全に無視したい一撃には
+     * {@link #dealPiercing} を使う。</p>
      *
      * <p>元素に固有のバニラ相互作用(炎無効 mob など)が必要なら、利用側が自前の
      * データパックタイプを作って {@link DamageElements#mapDamageType} で紐付け、
@@ -60,7 +65,21 @@ public final class DamageLib {
         if (element == null) {
             throw new IllegalArgumentException("element が null です");
         }
-        deal(DamageTypes.ELEMENTAL, DamageType.MAGIC, element, attacker, victim, amount);
+        // フォールバック(データパック未読込の初回起動)は防具を尊重する GENERIC を使う。
+        // attributelib:elemental が登録されるまでの間も挙動を一致させるため(MAGIC は素通りなので不可)。
+        deal(DamageTypes.ELEMENTAL, DamageType.GENERIC, element, attacker, victim, amount);
+    }
+
+    /**
+     * 元素を「宣誓」し、かつ<b>この一撃だけ</b>バニラ防具を完全に貫通してダメージを与える
+     * (臨時・この呼び出し限り)。{@link #deal} と違い防具で軽減されない。元素%・実数値加算・
+     * 会心・全体倍率は通常どおり効く。キャリアは attributelib:elemental_pierce。
+     */
+    public static void dealPiercing(DamageElement element, LivingEntity attacker, LivingEntity victim, double amount) {
+        if (element == null) {
+            throw new IllegalArgumentException("element が null です");
+        }
+        deal(DamageTypes.ELEMENTAL_PIERCE, DamageType.MAGIC, element, attacker, victim, amount);
     }
 
     /** このイベントで attributelib の会心が発動したか(表示用)。 */

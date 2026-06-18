@@ -29,6 +29,7 @@ public final class DatapackInstaller {
             "data/attributelib/damage_type/magic.json",
             "data/attributelib/damage_type/true_damage.json",
             "data/attributelib/damage_type/elemental.json",
+            "data/attributelib/damage_type/elemental_pierce.json",
             "data/minecraft/tags/damage_type/bypasses_armor.json",
             "data/minecraft/tags/damage_type/bypasses_effects.json",
             "data/minecraft/tags/damage_type/bypasses_enchantments.json",

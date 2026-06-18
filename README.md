@@ -133,12 +133,17 @@ DamageLib.magic(attacker, victim, 8);      // 魔法(防具素通り、magic_res
 DamageLib.pierce(attacker, victim, 5);     // 物理貫通
 DamageLib.trueDamage(attacker, victim, 3); // 確定(全防御・無敵フレーム素通り)
 
-// 元素の追加は1行 — <id>_damage / <id>_resist 属性が自動で生える
+// 元素の追加は1行 — <id>_damage / <id>_resist / <id>_damage_flat 属性が自動で生える
 DamageElement VOID = DamageElements.register(this, "void",
         Component.text("虚与ダメージ"), Component.text("虚耐性"));
-DamageLib.deal(VOID, attacker, victim, 8);              // 宣誓ダメージ(データパック不要)
+DamageLib.deal(VOID, attacker, victim, 8);         // 宣誓ダメージ(防具を尊重・貫通が効く)
+DamageLib.dealPiercing(VOID, attacker, victim, 8); // 宣誓 + この一撃だけ防具を完全貫通
 DamageElements.mapDamageType(myDamageTypeKey, VOID);    // 自作ダメージタイプの紐付け
 ```
+
+宣誓ダメージ(`deal`)は既定でバニラ防具を**尊重**し、攻撃側の `armor_penetration` /
+`armor_penetration_flat` と上限超過軽減が効く(貫通は防具軽減と超過軽減の両方を削る)。
+防具を完全に無視したい一撃だけ `dealPiercing` を使う(臨時・その呼び出し限り)。
 
 バニラの炎(`in_fire`/`lava`/…)は `fire_resist`、雷(`lightning_bolt`)は `lightning_resist` が
 そのまま効く(紐付け済み)。

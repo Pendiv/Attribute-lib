@@ -47,7 +47,10 @@ tasks {
         // expand はこの charset でファイルを読む。未指定だとプラットフォーム既定(Windows では
         // Shift-JIS)になり、UTF-8 の日本語コメントが壊れて plugin.yml が読めなくなる
         filteringCharset = "UTF-8"
-        val props = mapOf("version" to version)
+        // version を明示的に入力として登録しないと、version だけ変えても processResources が
+        // UP-TO-DATE 判定され plugin.yml が再生成されない(jar 名だけ新しく中身が古い、を防ぐ)
+        inputs.property("version", version.toString())
+        val props = mapOf("version" to version.toString())
         filesMatching("plugin.yml") {
             expand(props)
         }

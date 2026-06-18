@@ -27,8 +27,9 @@ public final class ElementRegistry {
     }
 
     /**
-     * 元素を登録し、{@code <id>_damage}(与ダメ倍率、既定1.0)と
-     * {@code <id>_resist}(軽減割合、既定0.0)の属性ペアを自動登録する。
+     * 元素を登録し、{@code <id>_damage}(与ダメ倍率、既定1.0)・
+     * {@code <id>_resist}(軽減割合、既定0.0)・{@code <id>_damage_flat}(実数値加算、既定0.0)の
+     * 属性を自動登録する。
      */
     public DamageElement register(Plugin owner, String id) {
         return register(owner, id, null, null);
@@ -47,7 +48,9 @@ public final class ElementRegistry {
                 damageDisplayName, true);
         AttributeType resist = engine.register(owner, id + "_resist", 0.0, -Double.MAX_VALUE, 1.0,
                 resistDisplayName, true);
-        DamageElement element = new DamageElement(key, damage, resist);
+        AttributeType flat = engine.register(owner, id + "_damage_flat", 0.0, 0.0, Double.MAX_VALUE,
+                damageDisplayName, false);
+        DamageElement element = new DamageElement(key, damage, resist, flat);
         elements.put(key, element);
         return element;
     }

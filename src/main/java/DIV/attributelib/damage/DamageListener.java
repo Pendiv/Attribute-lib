@@ -109,15 +109,37 @@ public final class DamageListener implements Listener {
         boolean vanillaCritical = event instanceof EntityDamageByEntityEvent byEntity && byEntity.isCritical();
 
         // データの無い側はデフォルト定数を使い、属性状態を生成しない
-        DamagePipeline.AttackerStats attackerStats = attacker == null ? null
-                : !attackerHasData ? DEFAULT_ATTACKER
-                : new DamagePipeline.AttackerStats(
-                        element != null ? engine.get(attacker, element.damageAttribute()) : 1.0,
-                        engine.get(attacker, StandardAttributes.CRIT_CHANCE),
-                        engine.get(attacker, StandardAttributes.CRIT_DAMAGE),
-                        engine.get(attacker, StandardAttributes.ARMOR_PENETRATION),
-                        engine.get(attacker, StandardAttributes.ARMOR_PENETRATION_FLAT),
-                        engine.get(attacker, StandardAttributes.DAMAGE_DEALT));
+        DamagePipeline.AttackerStats attackerStats;
+        if (attacker == null) {
+            attackerStats = null;
+        } else if (!attackerHasData) {
+            attackerStats = DEFAULT_ATTACKER;
+        } else {
+            // 実数値加算(全体 + 元素 + カテゴリ)を base 上乗せ分として合算し、
+            // 射撃・爆発カテゴリ倍率の積を別に持つ(元素倍率と直交して掛かる)。
+            double flatBonus = engine.get(attacker, StandardAttributes.DAMAGE_DEALT_FLAT);
+            double categoryMult = 1.0;
+            if (element != null) {
+                flatBonus += engine.get(attacker, element.flatAttribute());
+            }
+            if (DamageTypes.isProjectile(source)) {
+                flatBonus += engine.get(attacker, StandardAttributes.PROJECTILE_DAMAGE_FLAT);
+                categoryMult *= engine.get(attacker, StandardAttributes.PROJECTILE_DAMAGE);
+            }
+            if (DamageTypes.isExplosion(source)) {
+                flatBonus += engine.get(attacker, StandardAttributes.EXPLOSION_DAMAGE_FLAT);
+                categoryMult *= engine.get(attacker, StandardAttributes.EXPLOSION_DAMAGE);
+            }
+            attackerStats = new DamagePipeline.AttackerStats(
+                    element != null ? engine.get(attacker, element.damageAttribute()) : 1.0,
+                    engine.get(attacker, StandardAttributes.CRIT_CHANCE),
+                    engine.get(attacker, StandardAttributes.CRIT_DAMAGE),
+                    engine.get(attacker, StandardAttributes.ARMOR_PENETRATION),
+                    engine.get(attacker, StandardAttributes.ARMOR_PENETRATION_FLAT),
+                    engine.get(attacker, StandardAttributes.DAMAGE_DEALT),
+                    flatBonus,
+                    categoryMult);
+        }
 
         DamagePipeline.VictimStats victimStats = !victimHasData ? DEFAULT_VICTIM
                 : new DamagePipeline.VictimStats(

@@ -4,6 +4,6 @@
     "attributelib:physical_pierce",
     "attributelib:magic",
     "attributelib:true_damage",
-    "attributelib:elemental"
+    "attributelib:elemental_pierce"
   ]
 }

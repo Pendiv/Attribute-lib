@@ -44,7 +44,8 @@ public final class Attributelib extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        saveDefaultConfig();
+        // config.yml を用意し、バージョン差/破損があれば管理者の変更を引き継いで再生成する
+        DIV.attributelib.core.ConfigMigrator.run(this);
         raiseVanillaCaps();
 
         StandardAttributes.init(this, engine, elements);
@@ -96,7 +97,13 @@ public final class Attributelib extends JavaPlugin {
         if (section == null) {
             return;
         }
-        DIV.attributelib.core.VanillaCaps.raiseFromConfig(this, section.getValues(false));
+        if (!section.getBoolean("enabled", true)) {
+            getLogger().info("バニラ属性の上限解放(reflection)は無効化されています (caps.enabled: false)");
+            return;
+        }
+        var values = section.getValues(false);
+        values.remove("enabled"); // enabled はマスタートグル。属性キーではないので除外する
+        DIV.attributelib.core.VanillaCaps.raiseFromConfig(this, values);
     }
 
     /** config の armor-overflow: セクションから上限超過軽減設定を組む(無効なら null)。 */

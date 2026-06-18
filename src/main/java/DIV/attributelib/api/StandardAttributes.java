@@ -35,24 +35,48 @@ public final class StandardAttributes {
 
     /** 全与ダメ倍率(攻撃側、確定ダメージ以外の全ダメージに乗る)。 */
     public static AttributeType DAMAGE_DEALT;
+    /** 全与ダメ実数値加算(攻撃側)。base に上乗せされ、会心・%・防具計算が乗る。既定 0。 */
+    public static AttributeType DAMAGE_DEALT_FLAT;
     /** 全被ダメ倍率(防御側、確定ダメージ以外の全ダメージに乗る)。 */
     public static AttributeType DAMAGE_TAKEN;
     /** 物理与ダメ倍率(攻撃側)。= {@code DamageElements.PHYSICAL.damageAttribute()} */
     public static AttributeType PHYSICAL_DAMAGE;
+    /** 物理与ダメ実数値加算(攻撃側)。= {@code DamageElements.PHYSICAL.flatAttribute()} */
+    public static AttributeType PHYSICAL_DAMAGE_FLAT;
     /** 物理軽減割合(防御側)。 */
     public static AttributeType PHYSICAL_RESIST;
     /** 魔法与ダメ倍率(攻撃側)。 */
     public static AttributeType MAGIC_DAMAGE;
+    /** 魔法与ダメ実数値加算(攻撃側)。 */
+    public static AttributeType MAGIC_DAMAGE_FLAT;
     /** 魔法軽減割合(防御側)。 */
     public static AttributeType MAGIC_RESIST;
     /** 炎与ダメ倍率(攻撃側)。 */
     public static AttributeType FIRE_DAMAGE;
+    /** 炎与ダメ実数値加算(攻撃側)。 */
+    public static AttributeType FIRE_DAMAGE_FLAT;
     /** 炎軽減割合(防御側)。バニラの炎系ダメージにも効く。 */
     public static AttributeType FIRE_RESIST;
     /** 雷与ダメ倍率(攻撃側)。 */
     public static AttributeType LIGHTNING_DAMAGE;
+    /** 雷与ダメ実数値加算(攻撃側)。 */
+    public static AttributeType LIGHTNING_DAMAGE_FLAT;
     /** 雷軽減割合(防御側)。バニラの雷にも効く。 */
     public static AttributeType LIGHTNING_RESIST;
+    /**
+     * 射撃与ダメ倍率(攻撃側)。矢・三叉槍・投射物など {@code minecraft:is_projectile} タグの
+     * ダメージに乗る。元素とは直交し、物理の矢なら physical と projectile の両方が乗る。既定 1.0。
+     */
+    public static AttributeType PROJECTILE_DAMAGE;
+    /** 射撃与ダメ実数値加算(攻撃側)。射撃ダメージの base に上乗せ。既定 0。 */
+    public static AttributeType PROJECTILE_DAMAGE_FLAT;
+    /**
+     * 爆発与ダメ倍率(攻撃側)。{@code minecraft:is_explosion} タグのダメージに乗る。
+     * 元素とは直交する。既定 1.0。
+     */
+    public static AttributeType EXPLOSION_DAMAGE;
+    /** 爆発与ダメ実数値加算(攻撃側)。爆発ダメージの base に上乗せ。既定 0。 */
+    public static AttributeType EXPLOSION_DAMAGE_FLAT;
     /** 会心率 0..1(攻撃側)。バニラのジャンプ会心が出た攻撃では重複して発動しない。 */
     public static AttributeType CRIT_CHANCE;
     /** 会心倍率(攻撃側)。既定 1.5。 */
@@ -76,6 +100,8 @@ public final class StandardAttributes {
         }
         DAMAGE_DEALT = engine.register(attributelib, "damage_dealt", 1.0, 0.0, Double.MAX_VALUE,
                 Component.text("与ダメージ"), true);
+        DAMAGE_DEALT_FLAT = engine.register(attributelib, "damage_dealt_flat", 0.0, 0.0, Double.MAX_VALUE,
+                Component.text("与ダメージ(実数)"), false);
         DAMAGE_TAKEN = engine.register(attributelib, "damage_taken", 1.0, 0.0, Double.MAX_VALUE,
                 Component.text("被ダメージ"), true);
         CRIT_CHANCE = engine.register(attributelib, "crit_chance", 0.0, 0.0, 1.0,
@@ -91,6 +117,16 @@ public final class StandardAttributes {
         HEAL_MULTIPLIER = engine.register(attributelib, "heal_multiplier", 1.0, 0.0, Double.MAX_VALUE,
                 Component.text("回復量"), true);
 
+        // 射撃・爆発カテゴリ(元素と直交。is_projectile / is_explosion タグで判定される)
+        PROJECTILE_DAMAGE = engine.register(attributelib, "projectile_damage", 1.0, 0.0, Double.MAX_VALUE,
+                Component.text("射撃与ダメージ"), true);
+        PROJECTILE_DAMAGE_FLAT = engine.register(attributelib, "projectile_damage_flat", 0.0, 0.0, Double.MAX_VALUE,
+                Component.text("射撃与ダメージ(実数)"), false);
+        EXPLOSION_DAMAGE = engine.register(attributelib, "explosion_damage", 1.0, 0.0, Double.MAX_VALUE,
+                Component.text("爆発与ダメージ"), true);
+        EXPLOSION_DAMAGE_FLAT = engine.register(attributelib, "explosion_damage_flat", 0.0, 0.0, Double.MAX_VALUE,
+                Component.text("爆発与ダメージ(実数)"), false);
+
         DamageElement physical = elements.register(attributelib, "physical",
                 Component.text("物理与ダメージ"), Component.text("物理耐性"));
         DamageElement magic = elements.register(attributelib, "magic",
@@ -102,12 +138,16 @@ public final class StandardAttributes {
         DamageElements.initBuiltins(physical, magic, fire, lightning);
 
         PHYSICAL_DAMAGE = physical.damageAttribute();
+        PHYSICAL_DAMAGE_FLAT = physical.flatAttribute();
         PHYSICAL_RESIST = physical.resistAttribute();
         MAGIC_DAMAGE = magic.damageAttribute();
+        MAGIC_DAMAGE_FLAT = magic.flatAttribute();
         MAGIC_RESIST = magic.resistAttribute();
         FIRE_DAMAGE = fire.damageAttribute();
+        FIRE_DAMAGE_FLAT = fire.flatAttribute();
         FIRE_RESIST = fire.resistAttribute();
         LIGHTNING_DAMAGE = lightning.damageAttribute();
+        LIGHTNING_DAMAGE_FLAT = lightning.flatAttribute();
         LIGHTNING_RESIST = lightning.resistAttribute();
 
         seedVanillaMappings(elements, physical, magic, fire, lightning);

@@ -586,6 +586,12 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             check(failures, "magic_resist 0.75 × damage_taken 0.5 で 4 → 0.5",
                     health - zombie.getHealth(), 0.5);
 
+            // 元素宣誓は防具を尊重するようになったため、正確な期待値で検証する前に armor を 0 にする
+            org.bukkit.attribute.AttributeInstance zombieArmor = zombie.getAttribute(Attribute.ARMOR);
+            if (zombieArmor != null) {
+                zombieArmor.setBaseValue(0);
+            }
+
             // 元素: 宣誓ダメージ(fire_resist 0.25 と既設定の damage_taken 0.5 が両方効く)
             zombie.setNoDamageTicks(0);
             engine.setBase(zombie, StandardAttributes.FIRE_RESIST, 0.25);
@@ -594,11 +600,7 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
             check(failures, "fire 宣誓 4 → 1.5 (fire_resist0.25 × damage_taken0.5)",
                     health - zombie.getHealth(), 1.5);
 
-            // 元素: バニラ雷タイプのマッピング(armor を 0 にして正確な値で検証)
-            org.bukkit.attribute.AttributeInstance zombieArmor = zombie.getAttribute(Attribute.ARMOR);
-            if (zombieArmor != null) {
-                zombieArmor.setBaseValue(0);
-            }
+            // 元素: バニラ雷タイプのマッピング
             zombie.setNoDamageTicks(0);
             engine.setBase(zombie, StandardAttributes.LIGHTNING_RESIST, 0.5);
             health = zombie.getHealth();
@@ -633,6 +635,54 @@ public final class AlibCommand implements CommandExecutor, TabCompleter {
                 engine.setBase(zombie, StandardAttributes.DAMAGE_TAKEN, 0.5);
             } finally {
                 attacker.remove();
+            }
+
+            // 元素宣誓が防具を尊重 / dealPiercing は防具を完全素通り(新挙動の検証)。
+            // 専用の被害者ゾンビ(満タン)を立て、HP 枯渇や状態漏れを避ける。
+            Zombie armoredVictim = world.spawn(world.getSpawnLocation(), Zombie.class, z -> {
+                z.setAI(false);
+                z.setSilent(true);
+                z.setPersistent(false);
+                z.setRemoveWhenFarAway(false);
+            });
+            Zombie elemAttacker = world.spawn(world.getSpawnLocation(), Zombie.class, z -> {
+                z.setAI(false);
+                z.setSilent(true);
+                z.setPersistent(false);
+            });
+            try {
+                org.bukkit.attribute.AttributeInstance vArmor = armoredVictim.getAttribute(Attribute.ARMOR);
+                if (vArmor != null) {
+                    vArmor.setBaseValue(20);
+                }
+                double vHealth;
+
+                // (1) deal は防具を尊重: armor20 で 4 が削れ、裸の 4 未満になる
+                armoredVictim.setNoDamageTicks(0);
+                vHealth = armoredVictim.getHealth();
+                DamageLib.deal(DamageElements.FIRE, elemAttacker, armoredVictim, 4);
+                double dealLoss = vHealth - armoredVictim.getHealth();
+                if (!(dealLoss < 4 - 1e-6)) {
+                    failures.add("deal は防具を尊重するはず: armor20 で 4 が削れていない (loss=" + dealLoss + ")");
+                }
+
+                // (2) dealPiercing は防具を完全素通り: armor20 でも裸と同値(4)
+                armoredVictim.setNoDamageTicks(0);
+                vHealth = armoredVictim.getHealth();
+                DamageLib.dealPiercing(DamageElements.FIRE, elemAttacker, armoredVictim, 4);
+                checkApprox(failures, "dealPiercing: armor20 でも裸と同値(4)",
+                        vHealth - armoredVictim.getHealth(), 4, 0.05);
+
+                // (3) ARMOR_PENETRATION 100% なら deal も裸と同値に戻る
+                engine.setBase(elemAttacker, StandardAttributes.ARMOR_PENETRATION, 1);
+                armoredVictim.setNoDamageTicks(0);
+                vHealth = armoredVictim.getHealth();
+                DamageLib.deal(DamageElements.FIRE, elemAttacker, armoredVictim, 4);
+                checkApprox(failures, "deal + 貫通100%: armor20 でも裸と同値(4)",
+                        vHealth - armoredVictim.getHealth(), 4, 0.05);
+            } finally {
+                armoredVictim.remove();
+                elemAttacker.remove();
             }
 
             // heal_multiplier はバニラ回復経路(EntityRegainHealthEvent)に効く。

@@ -18,7 +18,10 @@ public final class DamagePipeline {
     /**
      * 攻撃側の関係属性スナップショット。
      *
-     * @param elementDamage 元素与ダメ倍率(無属性ダメージなら 1.0 を渡す)
+     * @param elementDamage      元素与ダメ倍率(無属性ダメージなら 1.0 を渡す)
+     * @param flatBonus          base に上乗せする実数値ダメージの合計(全体 + 元素 + カテゴリ分を
+     *                           リスナーが事前合算して渡す)。base に加算されるため会心・%・防具計算が乗る
+     * @param categoryMultiplier 射撃・爆発などカテゴリ与ダメ倍率の積(該当しなければ 1.0)
      */
     public record AttackerStats(
             double elementDamage,
@@ -26,8 +29,16 @@ public final class DamagePipeline {
             double critDamage,
             double armorPenetration,
             double armorPenetrationFlat,
-            double damageDealt
+            double damageDealt,
+            double flatBonus,
+            double categoryMultiplier
     ) {
+        /** flat / カテゴリ倍率なしの簡易生成(flatBonus=0, categoryMultiplier=1)。 */
+        public AttackerStats(double elementDamage, double critChance, double critDamage,
+                             double armorPenetration, double armorPenetrationFlat, double damageDealt) {
+            this(elementDamage, critChance, critDamage, armorPenetration, armorPenetrationFlat,
+                    damageDealt, 0, 1);
+        }
     }
 
     /**
@@ -121,9 +132,17 @@ public final class DamagePipeline {
                                  DoubleSupplier random) {
         double multiplier = 1.0;
 
-        // 1. 元素倍率
+        // 1. 実数値加算(base 上乗せ)→ 元素倍率 → カテゴリ倍率 → 元素軽減。
+        //    flat は「base に加算してから会心・%・防具が乗る」意味論なので、最終値が
+        //    base × multiplier であることを使い、(base + flat) / base 倍として畳み込む。
+        //    以降の倍率が全てこの上乗せ後の量に掛かり、貫通の二分法も scaled = base × multiplier
+        //    経由で自動的に flat を含む(防具は通常どおり減算される)。
         if (attacker != null) {
+            if (baseDamage > 0 && attacker.flatBonus() != 0) {
+                multiplier *= (baseDamage + attacker.flatBonus()) / baseDamage;
+            }
             multiplier *= attacker.elementDamage();
+            multiplier *= attacker.categoryMultiplier();
         }
         multiplier *= Math.max(0, 1 - victim.elementResist());
 
